@@ -427,19 +427,19 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
 
                 {/* Slanted Memory Bandwidth Ceiling (600 GB/s) */}
                 <line x1="60" y1="240" x2="320" y2="50" stroke="#06B6D4" strokeWidth="3" strokeLinecap="round" />
-                <text x="140" y="130" fill="#06B6D4" fontSize="12" fontWeight="bold" transform="rotate(-36 140 130)">
-                  Memory Ceiling: 600 GB/s Peak HBM
+                <text x="100" y="165" fill="#06B6D4" fontSize="11" fontWeight="bold" transform="rotate(-36 100 165)">
+                  Memory Ceiling: 600 GB/s
                 </text>
 
                 {/* Horizontal Compute Plateau (31.2 TFLOPS) */}
                 <line x1="320" y1="50" x2="560" y2="50" stroke="#38BDF8" strokeWidth="3" strokeDasharray="6 4" strokeLinecap="round" />
-                <text x="360" y="42" fill="#7DD3FC" fontSize="11" fontWeight="bold">
+                <text x="400" y="38" fill="#7DD3FC" fontSize="11" fontWeight="bold">
                   Compute Ceiling: 31.2 TFLOPS
                 </text>
 
                 {/* The Arithmetic Intensity Knee */}
                 <circle cx="320" cy="50" r="5" fill="#38BDF8" />
-                <text x="315" y="38" fill="#E2E8F0" fontSize="11" fontWeight="bold" textAnchor="end">
+                <text x="320" y="38" fill="#E2E8F0" fontSize="11" fontWeight="bold" textAnchor="middle">
                   Knee: 52 FLOPs/Byte
                 </text>
 
@@ -478,8 +478,8 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
                 <text x="400" y="265" fill="#94A3B8" fontSize="11">
                   Operational Intensity (FLOPs/Byte) →
                 </text>
-                <text x="18" y="40" fill="#94A3B8" fontSize="11" transform="rotate(-90 18 40)">
-                  Performance (TFLOPS) →
+                <text x="58" y="22" fill="#94A3B8" fontSize="11" fontWeight="bold">
+                  Performance (TFLOPS) ↑
                 </text>
 
                 {/* Axis Numerical Ticks */}
