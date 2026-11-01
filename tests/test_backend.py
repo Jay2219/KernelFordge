@@ -83,3 +83,4 @@ async def test_orchestrator_self_healing_recovery():
     assert "REFLECTION_REPAIR" in recorded_steps
     assert response.benchmark is not None
     assert response.benchmark.numerical_parity_verified is True
+

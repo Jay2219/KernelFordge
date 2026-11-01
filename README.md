@@ -98,9 +98,29 @@ KernelForge/
 
 ---
 
-## 🏃 Quickstart & Installation
+## 🏃 Quickstart & Launch Options
 
-### 1. Backend Setup (Python 3.11+)
+### Option A: One-Click Docker Compose (Recommended)
+
+Run both the FastAPI backend and Next.js frontend with a single command:
+
+```bash
+docker compose up --build
+```
+
+Or on Windows, simply double-click **`start.bat`** (or run `powershell ./start.ps1`), which automatically builds and opens [http://localhost:3000](http://localhost:3000) in your browser.
+
+To stop the containers:
+```bash
+docker compose down
+# Or double-click stop.bat on Windows
+```
+
+---
+
+### Option B: Local Development Setup
+
+#### 1. Backend Setup (Python 3.11+)
 
 ```bash
 # Clone the repository
@@ -147,3 +167,4 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+

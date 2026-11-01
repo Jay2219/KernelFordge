@@ -13,3 +13,4 @@ PRESET_RMS_NORM = {
     "dtype": "float16",
     "fault_shape": [[32, 4097]]
 }
+

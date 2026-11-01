@@ -65,3 +65,4 @@ export const Header: React.FC<HeaderProps> = ({ status, mockMode }) => {
     </header>
   );
 };
+

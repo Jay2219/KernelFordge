@@ -95,3 +95,4 @@ Formulate the optimal tiling specification and emit JSON."""
             masking_logic=plan_data.get("masking_logic", "mask = cols < N on load and store"),
             fusion_rationale=plan_data.get("fusion_rationale", characteristics["fusion_rationale"])
         )
+

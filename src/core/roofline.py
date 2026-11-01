@@ -124,3 +124,4 @@ def compute_bandwidth_saturation(
     saturation_pct = min(100.0, (achieved_gbs / peak_bandwidth_gbs) * 100.0)
     
     return round(achieved_gbs, 2), round(saturation_pct, 1)
+

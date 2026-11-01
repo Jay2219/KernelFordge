@@ -75,3 +75,4 @@ export const TerminalLog: React.FC<TerminalLogProps> = ({ steps }) => {
     </div>
   );
 };
+

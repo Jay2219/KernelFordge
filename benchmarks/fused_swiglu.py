@@ -12,3 +12,4 @@ PRESET_SWIGLU = {
     "dtype": "float16",
     "fault_shape": [[32, 11009]]
 }
+

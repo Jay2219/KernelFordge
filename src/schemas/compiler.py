@@ -83,3 +83,4 @@ class SynthesisResponse(BaseModel):
     benchmark: Optional[BenchmarkResult] = None
     error_log: Optional[str] = None
     steps: List[ExecutionStep] = Field(default_factory=list)
+

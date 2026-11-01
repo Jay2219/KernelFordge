@@ -10,6 +10,9 @@ import { Play, RotateCw, Copy, Check, Bug, Sparkles, Layers } from "lucide-react
 // Dynamically import Monaco Editor to avoid SSR hydration issues
 const Editor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+
 const PRESETS = {
   fused_rms_norm: {
     title: "LLaMA-3 Fused RMSNorm",
@@ -64,7 +67,7 @@ export default function Home() {
 
   // Check backend status on mount
   useEffect(() => {
-    fetch("http://localhost:8000/")
+    fetch(`${API_BASE}/`)
       .then((res) => res.json())
       .then((data) => {
         if (data && typeof data.mock_sandbox === "boolean") {
@@ -107,7 +110,7 @@ export default function Home() {
 
     // Attempt WebSocket streaming
     try {
-      const ws = new WebSocket("ws://localhost:8000/ws/synthesize");
+      const ws = new WebSocket(`${WS_BASE}/ws/synthesize`);
       socketRef.current = ws;
 
       ws.onopen = () => {
@@ -167,7 +170,7 @@ export default function Home() {
 
   const fallbackRestSynthesis = async (payload: any) => {
     try {
-      const res = await fetch("http://localhost:8000/api/v1/synthesize", {
+      const res = await fetch(`${API_BASE}/api/v1/synthesize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -321,3 +324,4 @@ export default function Home() {
     </div>
   );
 }
+

@@ -50,3 +50,4 @@ def test_synthesize_endpoint():
     assert data["status"] == "COMPLETED"
     assert data["benchmark"]["speedup_vs_eager"] > 1.5
     assert len(data["steps"]) >= 4
+
