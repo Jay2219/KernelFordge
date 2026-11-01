@@ -141,7 +141,7 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                   <div className="h-2.5 w-full bg-white/[0.04] rounded-full overflow-hidden border border-white/[0.04]">
                     <div
                       className={`h-full rounded-full transition-all duration-700 ${
-                        isStandby ? "bg-rose-500/20 w-[85%]" : "bg-rose-500/80 w-full"
+                        isStandby ? "w-0" : "bg-rose-500/80 w-full"
                       }`}
                     />
                   </div>
@@ -158,7 +158,7 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                   <div className="h-2.5 w-full bg-white/[0.04] rounded-full overflow-hidden border border-white/[0.04]">
                     <div
                       className={`h-full rounded-full transition-all duration-700 ${
-                        isStandby ? "bg-amber-500/20 w-[45%]" : "bg-amber-500/80"
+                        isStandby ? "w-0" : "bg-amber-500/80"
                       }`}
                       style={isStandby ? undefined : { width: `${Math.min(100, (compileUs / eagerUs) * 100)}%` }}
                     />
@@ -169,15 +169,15 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                 <div>
                   <div className="flex justify-between text-[11px] text-slate-200 mb-1">
                     <span className="font-semibold text-emerald-400">KernelForge Triton</span>
-                    <span className={isStandby ? "text-emerald-500/60 font-mono" : "text-emerald-400 font-bold"}>
-                      {isStandby ? "TARGET: <120 µs" : `${tritonUs.toFixed(1)} µs`}
+                    <span className={isStandby ? "text-slate-600 font-mono" : "text-emerald-400 font-bold"}>
+                      {isStandby ? "--.- µs" : `${tritonUs.toFixed(1)} µs`}
                     </span>
                   </div>
                   <div className="h-3 w-full bg-white/[0.04] rounded-full overflow-hidden border border-white/[0.04]">
                     <div
                       className={`h-full rounded-full transition-all duration-700 ${
                         isStandby
-                          ? "bg-emerald-500/20 w-[30%]"
+                          ? "w-0"
                           : "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm shadow-emerald-500/20"
                       }`}
                       style={isStandby ? undefined : { width: `${Math.min(100, (tritonUs / eagerUs) * 100)}%` }}
@@ -313,40 +313,47 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                   <text x="305" y="137" fill="#64748B" fontSize="7.5" textAnchor="middle">10³</text>
                   <text x="245" y="145" fill="#64748B" fontSize="7.5">FLOPs/Byte →</text>
 
-                  {/* Eager Point (Red) */}
-                  <circle cx="110" cy="115" r="3.5" fill={isStandby ? "#64748b" : "#F43F5E"} />
-                  <text x="118" y="118" fill={isStandby ? "#64748b" : "#FDA4AF"} fontSize="8">
-                    {isStandby ? "Eager Baseline" : "Eager (~30% HBM)"}
-                  </text>
-
-                  {/* Upward Vector */}
-                  {!isStandby && (
+                  {/* Empirical Operating Points (Only rendered when benchmark is available) */}
+                  {!isStandby ? (
                     <>
+                      {/* Eager Point (Red) */}
+                      <circle cx="110" cy="115" r="3.5" fill="#F43F5E" />
+                      <text x="118" y="118" fill="#FDA4AF" fontSize="8">
+                        Eager (~30% HBM)
+                      </text>
+
+                      {/* Upward Vector */}
                       <line x1="110" y1="110" x2="110" y2="85" stroke="#10B981" strokeWidth="1.5" strokeDasharray="2 2" />
                       <polygon points="110,80 107,86 113,86" fill="#10B981" />
-                    </>
-                  )}
 
-                  {/* Triton Operating Point */}
-                  <circle
-                    cx={110}
-                    cy={80}
-                    r={isStandby ? 3.5 : 4.5}
-                    fill={isStandby ? "#1e293b" : "#10B981"}
-                    stroke={isStandby ? "#06b6d4" : undefined}
-                    strokeWidth={isStandby ? 1.5 : undefined}
-                    filter={isStandby ? undefined : "url(#glowGreen)"}
-                  />
-                  {!isStandby && <circle cx={110} cy={80} r={2} fill="#FFFFFF" />}
-                  <text
-                    x={118}
-                    y={83}
-                    fill={isStandby ? "#06b6d4" : "#34D399"}
-                    fontSize={8.5}
-                    fontWeight={isStandby ? "normal" : "bold"}
-                  >
-                    {isStandby ? "Target: ~88% HBM" : `Triton (${saturationPct.toFixed(1)}% HBM)`}
-                  </text>
+                      {/* Triton Operating Point */}
+                      <circle
+                        cx={110}
+                        cy={80}
+                        r={4.5}
+                        fill="#10B981"
+                        filter="url(#glowGreen)"
+                      />
+                      <circle cx={110} cy={80} r={2} fill="#FFFFFF" />
+                      <text
+                        x={118}
+                        y={83}
+                        fill="#34D399"
+                        fontSize={8.5}
+                        fontWeight="bold"
+                      >
+                        Triton ({saturationPct.toFixed(1)}% HBM)
+                      </text>
+                    </>
+                  ) : (
+                    /* Clean Standby State: No fake operational points */
+                    <g opacity="0.7">
+                      <rect x="55" y="80" width="210" height="22" rx="4" fill="#0A0D14" stroke="#1E293B" strokeWidth="0.8" />
+                      <text x="160" y="94" fill="#64748B" fontSize="8" textAnchor="middle" fontFamily="sans-serif">
+                        Awaiting synthesis to plot operational points
+                      </text>
+                    </g>
+                  )}
                 </svg>
               </div>
             </div>
@@ -446,36 +453,41 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                   Knee: 52 FLOPs/Byte
                 </text>
 
-                {/* PyTorch Eager Baseline Point */}
-                <circle cx="160" cy="210" r="6" fill={isStandby ? "#64748b" : "#F43F5E"} />
-                <text x="175" y="214" fill={isStandby ? "#94A3B8" : "#FDA4AF"} fontSize="12" fontWeight="medium">
-                  {isStandby ? "PyTorch Eager Baseline (~30% Saturation • 3 HBM Roundtrips)" : "PyTorch Eager (Unfused HBM Traffic: 3 Roundtrips)"}
-                </text>
-
-                {/* Upward Acceleration Vector */}
-                {!isStandby && (
+                {/* Empirical Data Points (Only rendered when real benchmark is available) */}
+                {!isStandby ? (
                   <>
+                    {/* PyTorch Eager Baseline Point */}
+                    <circle cx="160" cy="210" r="6" fill="#F43F5E" />
+                    <text x="175" y="214" fill="#FDA4AF" fontSize="12" fontWeight="medium">
+                      PyTorch Eager (Unfused HBM Traffic: 3 Roundtrips)
+                    </text>
+
+                    {/* Upward Acceleration Vector */}
                     <line x1="160" y1="202" x2="160" y2="162" stroke="#10B981" strokeWidth="2.5" strokeDasharray="3 3" />
                     <polygon points="160,154 155,164 165,164" fill="#10B981" />
-                  </>
-                )}
 
-                {/* Synthesized Triton Kernel Operating Point */}
-                <circle 
-                  cx="160" 
-                  cy="155" 
-                  r={isStandby ? 5 : 7} 
-                  fill={isStandby ? "#1e293b" : "#10B981"} 
-                  stroke={isStandby ? "#06b6d4" : undefined}
-                  strokeWidth={isStandby ? 2 : undefined}
-                  filter={isStandby ? undefined : "url(#modalGlowGreen)"} 
-                />
-                {!isStandby && <circle cx="160" cy="155" r="3" fill="#FFFFFF" />}
-                <text x="175" y="152" fill={isStandby ? "#38BDF8" : "#34D399"} fontSize="13" fontWeight="bold">
-                  {isStandby 
-                    ? "Target KernelForge Triton (528.4 GB/s • 88.1% Saturation)" 
-                    : `KernelForge Triton (${bandwidthGbs.toFixed(1)} GB/s • ${saturationPct.toFixed(1)}% Saturation)`}
-                </text>
+                    {/* Synthesized Triton Kernel Operating Point */}
+                    <circle 
+                      cx="160" 
+                      cy="155" 
+                      r={7} 
+                      fill="#10B981" 
+                      filter="url(#modalGlowGreen)" 
+                    />
+                    <circle cx="160" cy="155" r="3" fill="#FFFFFF" />
+                    <text x="175" y="152" fill="#34D399" fontSize="13" fontWeight="bold">
+                      KernelForge Triton ({bandwidthGbs.toFixed(1)} GB/s • ${saturationPct.toFixed(1)}% Saturation)
+                    </text>
+                  </>
+                ) : (
+                  /* Clean Standby State: No fake operational points */
+                  <g opacity="0.8">
+                    <rect x="130" y="125" width="300" height="34" rx="6" fill="#0A0D14" stroke="#334155" strokeWidth="1" />
+                    <text x="280" y="146" fill="#94A3B8" fontSize="12" textAnchor="middle" fontFamily="sans-serif">
+                      Standby: Operational points mapped after run
+                    </text>
+                  </g>
+                )}
 
                 {/* X & Y Axis Labels */}
                 <text x="400" y="265" fill="#94A3B8" fontSize="11">
