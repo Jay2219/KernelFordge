@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
-import { Terminal, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Activity } from "lucide-react";
+import React, { useRef, useEffect } from "react";
+import { Terminal, CheckCircle2, AlertTriangle, Activity } from "lucide-react";
 
 export interface ExecutionStep {
   step_name: string;
@@ -28,34 +28,34 @@ export const TerminalLog: React.FC<TerminalLogProps> = ({ steps }) => {
     const lower = agent.toLowerCase();
     if (lower.includes("wonder") || lower.includes("architect")) {
       return (
-        <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-700/60 font-bold shadow-sm shadow-cyan-950">
+        <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[10px] font-semibold">
           ARCHITECT: Muse Wonder
         </span>
       );
     }
     if (lower.includes("synthesizer") || (lower.includes("code") && !lower.includes("reflection"))) {
       return (
-        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 font-bold shadow-sm shadow-emerald-950">
+        <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-semibold">
           SYNTHESIZER: Muse Code
         </span>
       );
     }
     if (lower.includes("auditor") || lower.includes("baseten") || lower.includes("spark open")) {
       return (
-        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-700/60 font-bold shadow-sm shadow-amber-950">
+        <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-semibold">
           AUDITOR: Muse Spark Open @ Baseten
         </span>
       );
     }
     if (lower.includes("reflection") || lower.includes("repair")) {
       return (
-        <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-700/60 font-bold shadow-sm shadow-purple-950">
-          REFLECTION: Muse Code (Self-Healing)
+        <span className="px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] font-semibold">
+          REFLECTOR: Muse Code (Self-Healing)
         </span>
       );
     }
     return (
-      <span className="text-[10px] px-2 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-700/60 font-bold">
+      <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">
         SANDBOX: Modal A10G
       </span>
     );
@@ -68,55 +68,48 @@ export const TerminalLog: React.FC<TerminalLogProps> = ({ steps }) => {
   };
 
   return (
-    <div className="h-full flex flex-col font-mono text-xs border border-[#1f293d] rounded-lg bg-[#0a0d14] overflow-hidden">
-      <div className="px-4 py-2 border-b border-[#1f293d] bg-[#0f1420] flex items-center justify-between text-slate-400">
-        <span className="flex items-center gap-2">
+    <div className="h-full flex flex-col font-mono text-xs bg-[#06080D] overflow-hidden">
+      {/* Drawer Header (Fixed 28px) */}
+      <div className="h-7 border-b border-white/[0.06] bg-white/[0.02] px-3 flex items-center justify-between text-xs text-slate-400 shrink-0">
+        <div className="flex items-center gap-2">
           <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="font-semibold text-slate-300">CLOSED-LOOP MULTI-AGENT COMPILER TRACE</span>
-        </span>
-        <div className="flex items-center gap-3 text-[10px]">
-          <span className="flex items-center gap-1.5 text-slate-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            WEBSOCKET STREAM ACTIVE
+          <span className="font-semibold tracking-wide text-slate-300">
+            Closed-Loop Multi-Agent Compiler Trace
           </span>
-          <span className="text-slate-500 font-bold">[{steps.length} EVENTS]</span>
+        </div>
+        <div className="flex items-center gap-2 font-mono text-[10px]">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-slate-400">WebSocket Live [{steps.length} Events Recorded]</span>
         </div>
       </div>
 
-      <div className="flex-1 p-3 overflow-y-auto space-y-2">
+      {/* Drawer Scrollable Content */}
+      <div className="flex-1 p-2.5 overflow-y-auto space-y-1.5 bg-[#07090E]">
         {steps.length === 0 ? (
           <div className="h-full flex items-center justify-center text-slate-600 text-[11px] gap-2">
-            <span className="animate-pulse">&gt;</span> Standby. Select an operator preset and click &quot;Synthesize &amp; Compile&quot; (or press Ctrl+Enter).
+            <span className="animate-pulse">&gt;</span> Standby. Select an operator preset and press &quot;Synthesize &amp; Compile&quot; (or Ctrl+Enter).
           </div>
         ) : (
-          steps.map((step, idx) => (
-            <div
-              key={idx}
-              className={`flex flex-col gap-1 border-l-2 pl-3 py-1 transition-colors ${
-                step.status === "FAILED"
-                  ? "border-rose-500/80 bg-rose-950/10"
-                  : step.status === "SUCCESS"
-                  ? "border-emerald-500/80 bg-emerald-950/5"
-                  : "border-cyan-500/80 bg-cyan-950/5"
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                {getStepIcon(step.status)}
-                {getAgentBadge(step.agent_name)}
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                  [{step.step_name}]
-                </span>
-                <span className="text-[10px] text-slate-600 ml-auto">
-                  T+{((idx + 1) * 0.4).toFixed(1)}s
-                </span>
+          steps.map((step, idx) => {
+            const timeTag = `[${new Date(Date.now() - (steps.length - idx) * 800).toTimeString().slice(0, 8)}]`;
+            return (
+              <div
+                key={idx}
+                className={`flex items-start gap-2 text-xs py-0.5 px-1.5 rounded transition-colors ${
+                  step.status === "FAILED"
+                    ? "bg-rose-950/20 text-rose-300"
+                    : "text-slate-300 hover:bg-white/[0.02]"
+                }`}
+              >
+                <span className="text-slate-500 font-mono text-[11px] shrink-0 mt-0.5">{timeTag}</span>
+                <div className="shrink-0 mt-0.5">{getAgentBadge(step.agent_name)}</div>
+                <div className="shrink-0 mt-0.5">{getStepIcon(step.status)}</div>
+                <p className="flex-1 text-[11px] leading-snug break-words">
+                  {step.message}
+                </p>
               </div>
-              <p className={`text-[11px] leading-relaxed pl-6 ${
-                step.status === "FAILED" ? "text-rose-300 font-mono" : "text-slate-300"
-              }`}>
-                {step.message}
-              </p>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={terminalEndRef} />
       </div>

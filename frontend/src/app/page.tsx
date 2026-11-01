@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Header } from "../components/Header";
 import { TriComparisonChart } from "../components/TriComparisonChart";
 import { TerminalLog, ExecutionStep } from "../components/TerminalLog";
-import { Play, RotateCw, Copy, Check, Bug, Sparkles, Layers, CornerDownLeft } from "lucide-react";
+import { 
+  Zap, Cpu, Check, Copy, Play, RotateCw, 
+  Layers, Sparkles, CornerDownLeft, Bug 
+} from "lucide-react";
 
 // Dynamically import Monaco Editor to avoid SSR hydration issues
 const Editor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
@@ -20,12 +22,11 @@ const PRESETS = {
     dimTag: "[32, 4096]",
     shapes: [[32, 4096]],
     dtype: "float16",
-    code: `def rms_norm_eager(x, weight, eps=1e-6):
-    # Eager RMSNorm allocates 3 intermediate HBM buffers:
-    # 1. x.pow(2) elementwise square pass
-    # 2. Mean reduction along hidden dimension (-1)
-    # 3. Reciprocal square root (rsqrt) and scaling
-    # KernelForge fuses these into a single SRAM tile pass.
+    code: `def rms_norm_eager(x: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    # Standard PyTorch Eager allocates 3 intermediate HBM buffers:
+    # 1. Elementwise square: x.pow(2)
+    # 2. Reduction across hidden dim: variance = mean(-1)
+    # 3. Normalization & scale: x * rsqrt(variance + eps) * weight
     variance = x.pow(2).mean(-1, keepdim=True)
     return x * torch.rsqrt(variance + eps) * weight
 `
@@ -36,11 +37,10 @@ const PRESETS = {
     dimTag: "[32, 11008]",
     shapes: [[32, 11008]],
     dtype: "float16",
-    code: `def swiglu_eager(gate, up):
-    # Eager SwiGLU executes two separate kernel launches:
-    # 1. SiLU elementwise activation pass over gate tensor
-    # 2. Vectorized Hadamard multiplication with up-projection
-    # KernelForge fuses both operations into a single SRAM tile pass.
+    code: `def swiglu_eager(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
+    # SwiGLU requires 2 separate kernel launches in eager mode:
+    # 1. SiLU activation: silu(gate) = gate * sigmoid(gate)
+    # 2. Elementwise multiplication with up-projection
     return torch.nn.functional.silu(gate) * up
 `
   },
@@ -50,21 +50,22 @@ const PRESETS = {
     dimTag: "[32, 4096]",
     shapes: [[32, 4096]],
     dtype: "float16",
-    code: `def softmax_eager(scores):
-    # Standard eager Softmax requires 3 passes over HBM:
-    # 1. Row-max reduction for numerical stability (exp(x - max))
-    # 2. Exponentiation and sum reduction for denominator
-    # 3. Elementwise division (Softmax)
-    # KernelForge synthesizes a 1-pass online Flash-Softmax.
+    code: `def softmax_eager(scores: torch.Tensor) -> torch.Tensor:
+    # Eager Softmax triggers 3 roundtrips to HBM memory:
+    # 1. Max tracking along row for numerical stability
+    # 2. Exponentiation and sum-reduction for denominator
+    # 3. Elementwise scaling by inverse normalizer
     return torch.softmax(scores, dim=-1)
 `
   }
 };
 
-export default function Home() {
+export default function KernelForgeWorkbench() {
   const [selectedPreset, setSelectedPreset] = useState<keyof typeof PRESETS>("fused_rms_norm");
   const [pytorchCode, setPytorchCode] = useState(PRESETS.fused_rms_norm.code);
-  const [tritonCode, setTritonCode] = useState<string>("# Synthesized Triton (@triton.jit) kernel will appear here...\n");
+  const [tritonCode, setTritonCode] = useState<string>(
+    "# Synthesized OpenAI Triton (@triton.jit) kernel will appear here...\n"
+  );
   const [status, setStatus] = useState<"IDLE" | "COMPILING" | "BENCHMARKING" | "HEALING" | "COMPLETED" | "ERROR">("IDLE");
   const [steps, setSteps] = useState<ExecutionStep[]>([]);
   const [benchmark, setBenchmark] = useState<any>(null);
@@ -139,15 +140,9 @@ export default function Home() {
 
         if (msg.type === "SYNTHESIS_COMPLETE" && msg.response) {
           const resp = msg.response;
-          if (resp.triton_source_code) {
-            setTritonCode(resp.triton_source_code);
-          }
-          if (resp.benchmark) {
-            setBenchmark(resp.benchmark);
-          }
-          if (resp.tiling_plan) {
-            setTilingPlan(resp.tiling_plan);
-          }
+          if (resp.triton_source_code) setTritonCode(resp.triton_source_code);
+          if (resp.benchmark) setBenchmark(resp.benchmark);
+          if (resp.tiling_plan) setTilingPlan(resp.tiling_plan);
           setStatus(resp.status === "COMPLETED" ? "COMPLETED" : "ERROR");
           ws.close();
         }
@@ -179,7 +174,7 @@ export default function Home() {
       if (data.tiling_plan) setTilingPlan(data.tiling_plan);
       if (data.steps) setSteps(data.steps);
       setStatus(data.status === "COMPLETED" ? "COMPLETED" : "ERROR");
-    } catch (e: any) {
+    } catch {
       setStatus("ERROR");
     }
   };
@@ -196,149 +191,189 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [runSynthesis]);
 
-  return (
-    <div className="flex flex-col h-screen bg-[#090a0f] text-[#e2e8f0]">
-      {/* Top Navigation */}
-      <Header status={status} />
+  const isBusy = status === "COMPILING" || status === "BENCHMARKING" || status === "HEALING";
 
-      {/* Main Workspace */}
-      <div className="flex-1 flex flex-col p-4 gap-3.5 overflow-hidden">
-        {/* Control Toolbar */}
-        <div className="flex items-center justify-between bg-[#0e131d] border border-[#1f293d] px-4 py-2 rounded-lg font-mono text-xs">
+  return (
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#07090E] text-slate-200 font-sans select-none">
+      
+      {/* 1. SLIM COMMAND HEADER (Fixed 52px) */}
+      <header className="h-[52px] border-b border-white/[0.08] bg-[#0A0D14] px-4 flex items-center justify-between shrink-0 z-10">
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-slate-400 font-bold mr-1">PRESET OPS:</span>
-            {Object.entries(PRESETS).map(([key, val]) => (
-              <button
-                key={key}
-                onClick={() => handlePresetSelect(key as keyof typeof PRESETS)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-all text-xs font-medium ${
-                  selectedPreset === key
-                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/60 font-bold shadow-sm shadow-cyan-950"
-                    : "bg-slate-900/80 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 hover:border-slate-500"
-                }`}
-              >
-                <span>{val.title}</span>
-                <span className={`text-[10px] font-normal ${selectedPreset === key ? "text-cyan-400" : "text-slate-400"}`}>{val.dimTag}</span>
-              </button>
-            ))}
+            <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+              <Zap className="w-4 h-4 fill-cyan-400/20" />
+            </div>
+            <span className="font-semibold text-white tracking-tight text-sm">KernelForge</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-400 border border-white/[0.04]">
+              v0.1.0
+            </span>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Stress Test / Self-Healing Toggle (Engineering Reframe) */}
-            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white select-none group">
-              <input
-                type="checkbox"
-                checked={triggerFaultDemo}
-                onChange={(e) => setTriggerFaultDemo(e.target.checked)}
-                className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-0 focus:ring-offset-0 accent-teal-500 cursor-pointer"
-              />
-              <span className="flex items-center gap-1.5 text-slate-300 group-hover:text-teal-300 transition-colors font-medium">
-                <Bug className="w-3.5 h-3.5 text-teal-400" />
-                <span>Edge-Case Shape: <strong className="text-teal-300 font-semibold">N=4097</strong> (Unaligned Memory Stress)</span>
-              </span>
-            </label>
+          <div className="h-4 w-px bg-white/[0.08] mx-1" />
 
-            {/* Synthesize Button with Hotkey Badge */}
+          {/* Infrastructure Badges */}
+          <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/[0.06] text-slate-300">
+              <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+              <span>A10G <span className="text-slate-500 text-[11px]">(600 GB/s)</span></span>
+            </div>
+
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/[0.06] text-slate-300">
+              <span className="text-slate-400">Models:</span>
+              <span className="text-cyan-400 font-medium">Muse Wonder + Code</span>
+            </div>
+
+            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-300 font-medium text-[11px]">
+              <span>Baseten Open-Weights</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Modal A10G Live</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action CTA */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={runSynthesis}
+            disabled={isBusy}
+            className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-400 hover:from-cyan-400 hover:to-emerald-300 text-black font-semibold text-xs transition-all shadow-lg shadow-cyan-500/20 active:scale-95 disabled:opacity-50"
+          >
+            {isBusy ? (
+              <>
+                <RotateCw className="w-3.5 h-3.5 animate-spin text-black" />
+                <span>Compiling on A10G...</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 fill-black" />
+                <span>Synthesize &amp; Compile</span>
+                <span className="text-[10px] bg-black/20 px-1 rounded font-mono ml-1 font-bold">Ctrl ↵</span>
+              </>
+            )}
+          </button>
+        </div>
+      </header>
+
+      {/* 2. COMPACT PRESET CHIP BAR (Fixed 38px) */}
+      <div className="h-[38px] border-b border-white/[0.06] bg-[#07090E] px-4 flex items-center justify-between text-xs shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400 text-[11px] font-medium mr-1">Presets:</span>
+          {Object.entries(PRESETS).map(([key, val]) => (
             <button
-              onClick={runSynthesis}
-              disabled={status === "COMPILING" || status === "BENCHMARKING" || status === "HEALING"}
-              className="flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-bold tracking-wider transition-all disabled:opacity-50 shadow-md shadow-emerald-500/20 active:scale-[0.98]"
+              key={key}
+              onClick={() => handlePresetSelect(key as keyof typeof PRESETS)}
+              className={`px-2.5 py-1 rounded-md transition-all text-xs font-medium flex items-center gap-1.5 ${
+                selectedPreset === key
+                  ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-medium"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+              }`}
             >
-              {status === "COMPILING" || status === "BENCHMARKING" || status === "HEALING" ? (
-                <>
-                  <RotateCw className="w-4 h-4 animate-spin text-black" />
-                  <span>PROCESSING...</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5 fill-black" />
-                  <span>SYNTHESIZE &amp; COMPILE</span>
-                  <kbd className="hidden sm:inline-flex items-center gap-0.5 ml-1 px-1.5 py-0.5 rounded bg-black/25 text-[10px] font-mono text-black font-extrabold border border-black/10">
-                    <CornerDownLeft className="w-2.5 h-2.5" /> Ctrl ↵
-                  </kbd>
-                </>
-              )}
+              <span>{val.title}</span>
+              <span className={`text-[10px] font-mono ${selectedPreset === key ? "text-cyan-400" : "text-slate-500"}`}>
+                {val.dimTag}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Custom Toggle Switch for Edge-Case */}
+        <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white transition-colors">
+          <input
+            type="checkbox"
+            checked={triggerFaultDemo}
+            onChange={(e) => setTriggerFaultDemo(e.target.checked)}
+            className="w-3.5 h-3.5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-0 accent-cyan-500 cursor-pointer"
+          />
+          <span className="text-[11px] font-medium flex items-center gap-1">
+            <Bug className="w-3 h-3 text-purple-400" />
+            <span>Stress Test: <strong className="font-mono text-purple-400 font-semibold">N=4097</strong> (Unaligned Boundary Mask)</span>
+          </span>
+        </label>
+      </div>
+
+      {/* 3. MAIN WORKSPACE (Flex Row: 28% / 42% / 30% Exact Proportions) */}
+      <main className="flex-1 flex overflow-hidden p-2 gap-2">
+        
+        {/* COLUMN 1: PyTorch Eager Input (28%) */}
+        <section className="w-[28%] flex flex-col rounded-lg border border-white/[0.08] bg-[#0A0D14] overflow-hidden">
+          <div className="h-8 border-b border-white/[0.06] bg-white/[0.02] px-3 flex items-center justify-between text-xs text-slate-400 shrink-0 font-mono">
+            <span className="flex items-center gap-2 text-slate-300 font-medium">
+              <Layers className="w-3.5 h-3.5 text-cyan-400" />
+              PyTorch Eager Source
+            </span>
+            <span className="text-[10px] text-slate-500 font-semibold tracking-wider">REFERENCE OP</span>
+          </div>
+          <div className="flex-1 min-h-0 bg-[#080B10]">
+            <Editor
+              height="100%"
+              defaultLanguage="python"
+              value={pytorchCode}
+              onChange={(val) => setPytorchCode(val || "")}
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 12,
+                fontFamily: "JetBrains Mono, monospace",
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+                automaticLayout: true
+              }}
+            />
+          </div>
+        </section>
+
+        {/* COLUMN 2: Synthesized Triton Hero (42%) */}
+        <section className="w-[42%] flex flex-col rounded-lg border border-white/[0.08] bg-[#0A0D14] overflow-hidden shadow-lg shadow-black/40">
+          <div className="h-8 border-b border-white/[0.06] bg-white/[0.02] px-3 flex items-center justify-between text-xs shrink-0 font-mono">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="font-semibold text-slate-200">Synthesized OpenAI Triton</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                @triton.jit
+              </span>
+            </div>
+            <button
+              onClick={handleCopyCode}
+              className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white transition-colors"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? "Copied" : "Copy Kernel"}</span>
             </button>
           </div>
-        </div>
-
-        {/* 3-Column IDE Grid with Optimal 27% / 43% / 30% Width Split */}
-        <div className="flex-1 flex gap-3.5 min-h-0">
-          {/* Left Column (27%): Monaco PyTorch Input */}
-          <div className="w-[27%] min-w-[270px] flex flex-col border border-[#1f293d] rounded-lg bg-[#0c1017] overflow-hidden">
-            <div className="px-3 py-2 bg-[#0e1420] border-b border-[#1f293d] flex items-center justify-between text-xs font-mono text-slate-400">
-              <span className="flex items-center gap-2">
-                <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                PYTORCH EAGER INPUT
-              </span>
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">REFERENCE OP</span>
-            </div>
-            <div className="flex-1 min-h-0">
-              <Editor
-                height="100%"
-                defaultLanguage="python"
-                value={pytorchCode}
-                onChange={(val) => setPytorchCode(val || "")}
-                theme="vs-dark"
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 12,
-                  fontFamily: "JetBrains Mono, monospace",
-                  lineNumbers: "on",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true
-                }}
-              />
-            </div>
+          <div className="flex-1 min-h-0 bg-[#080B10]">
+            <Editor
+              height="100%"
+              defaultLanguage="python"
+              value={tritonCode}
+              theme="vs-dark"
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                fontSize: 12,
+                fontFamily: "JetBrains Mono, monospace",
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                wordWrap: "off" // Spacious 42% width ensures equations don't wrap
+              }}
+            />
           </div>
+        </section>
 
-          {/* Center Hero Column (43%): Monaco Synthesized Triton Output */}
-          <div className="w-[43%] min-w-[420px] flex flex-col border border-[#1f293d] rounded-lg bg-[#0c1017] overflow-hidden shadow-lg shadow-black/40">
-            <div className="px-3 py-2 bg-[#0e1420] border-b border-[#1f293d] flex items-center justify-between text-xs font-mono text-slate-400">
-              <span className="flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="font-semibold text-slate-200">SYNTHESIZED OPENAI TRITON</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-400 border border-emerald-800/50">@triton.jit</span>
-              </span>
-              <button
-                onClick={handleCopyCode}
-                className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#182030] hover:bg-[#202c42] text-[10px] text-slate-300 transition-colors border border-slate-700/50 font-semibold"
-              >
-                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                {copied ? "COPIED" : "COPY KERNEL"}
-              </button>
-            </div>
-            <div className="flex-1 min-h-0">
-              <Editor
-                height="100%"
-                defaultLanguage="python"
-                value={tritonCode}
-                theme="vs-dark"
-                options={{
-                  readOnly: true,
-                  minimap: { enabled: false },
-                  fontSize: 12,
-                  fontFamily: "JetBrains Mono, monospace",
-                  lineNumbers: "on",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  wordWrap: "off" // Triton lines read clean with 43% width
-                }}
-              />
-            </div>
-          </div>
+        {/* COLUMN 3: Telemetry Inspector with 2 Tabs (30%) */}
+        <section className="w-[30%] flex flex-col rounded-lg overflow-hidden">
+          <TriComparisonChart benchmark={benchmark} tilingPlan={tilingPlan} />
+        </section>
+      </main>
 
-          {/* Right Column (30%): Tri-Comparison Latency & Telemetry */}
-          <div className="w-[30%] min-w-[300px] flex flex-col min-h-0">
-            <TriComparisonChart benchmark={benchmark} tilingPlan={tilingPlan} />
-          </div>
-        </div>
+      {/* 4. AGENT COMPILER TRACE DRAWER (Fixed 160px) */}
+      <footer className="h-[160px] border-t border-white/[0.08] bg-[#06080D] flex flex-col shrink-0">
+        <TerminalLog steps={steps} />
+      </footer>
 
-        {/* Bottom Full-Width Terminal: Multi-Agent WebSocket Log */}
-        <div className="h-44 min-h-[160px]">
-          <TerminalLog steps={steps} />
-        </div>
-      </div>
     </div>
   );
 }
