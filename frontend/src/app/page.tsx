@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { Header } from "../components/Header";
 import { TriComparisonChart } from "../components/TriComparisonChart";
 import { TerminalLog, ExecutionStep } from "../components/TerminalLog";
-import { Play, RotateCw, Copy, Check, Bug, Sparkles, Layers } from "lucide-react";
+import { Play, RotateCw, Copy, Check, Bug, Sparkles, Layers, CornerDownLeft } from "lucide-react";
 
 // Dynamically import Monaco Editor to avoid SSR hydration issues
 const Editor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
@@ -17,6 +17,7 @@ const PRESETS = {
   fused_rms_norm: {
     title: "LLaMA-3 Fused RMSNorm",
     name: "fused_rms_norm",
+    dimTag: "[32, 4096]",
     shapes: [[32, 4096]],
     dtype: "float16",
     code: `def rms_norm_eager(x, weight, eps=1e-6):
@@ -31,6 +32,7 @@ const PRESETS = {
   fused_swiglu: {
     title: "LLaMA-3 Fused SwiGLU",
     name: "fused_swiglu",
+    dimTag: "[32, 11008]",
     shapes: [[32, 11008]],
     dtype: "float16",
     code: `def swiglu_eager(gate, up):
@@ -42,6 +44,7 @@ const PRESETS = {
   fused_softmax: {
     title: "Safe Online Softmax",
     name: "fused_softmax",
+    dimTag: "[32, 4096]",
     shapes: [[32, 4096]],
     dtype: "float16",
     code: `def softmax_eager(scores):
@@ -61,26 +64,13 @@ export default function Home() {
   const [tilingPlan, setTilingPlan] = useState<any>(null);
   const [triggerFaultDemo, setTriggerFaultDemo] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [mockActive, setMockActive] = useState(true);
 
   const socketRef = useRef<WebSocket | null>(null);
-
-  // Check backend status on mount
-  useEffect(() => {
-    fetch(`${API_BASE}/`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && typeof data.mock_sandbox === "boolean") {
-          setMockActive(data.mock_sandbox);
-        }
-      })
-      .catch(() => setMockActive(true));
-  }, []);
 
   const handlePresetSelect = (key: keyof typeof PRESETS) => {
     setSelectedPreset(key);
     setPytorchCode(PRESETS[key].code);
-    setTritonCode("# Click 'Synthesize & Benchmark' to generate custom Triton kernel...\n");
+    setTritonCode("# Click 'Synthesize & Compile' to generate custom Triton kernel...\n");
     setBenchmark(null);
     setTilingPlan(null);
     setSteps([]);
@@ -93,7 +83,9 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const runSynthesis = async () => {
+  const runSynthesis = useCallback(async () => {
+    if (status === "COMPILING" || status === "BENCHMARKING" || status === "HEALING") return;
+
     setStatus("COMPILING");
     setSteps([]);
     setBenchmark(null);
@@ -160,13 +152,12 @@ export default function Home() {
       };
 
       ws.onerror = () => {
-        // Fallback to REST API
         fallbackRestSynthesis(payload);
       };
     } catch {
       fallbackRestSynthesis(payload);
     }
-  };
+  }, [status, selectedPreset, pytorchCode, triggerFaultDemo]);
 
   const fallbackRestSynthesis = async (payload: any) => {
     try {
@@ -186,76 +177,94 @@ export default function Home() {
     }
   };
 
+  // Keyboard shortcut: Ctrl + Enter to synthesize
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        runSynthesis();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [runSynthesis]);
+
   return (
     <div className="flex flex-col h-screen bg-[#090a0f] text-[#e2e8f0]">
       {/* Top Navigation */}
-      <Header status={status} mockMode={mockActive} />
+      <Header status={status} />
 
       {/* Main Workspace */}
-      <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden">
+      <div className="flex-1 flex flex-col p-4 gap-3.5 overflow-hidden">
         {/* Control Toolbar */}
-        <div className="flex items-center justify-between bg-[#0e131d] border border-[#1f293d] px-4 py-2.5 rounded-lg font-mono text-xs">
+        <div className="flex items-center justify-between bg-[#0e131d] border border-[#1f293d] px-4 py-2 rounded-lg font-mono text-xs">
           <div className="flex items-center gap-2">
             <span className="text-slate-400 font-bold mr-1">PRESET OPS:</span>
             {Object.entries(PRESETS).map(([key, val]) => (
               <button
                 key={key}
                 onClick={() => handlePresetSelect(key as keyof typeof PRESETS)}
-                className={`px-3 py-1.5 rounded transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-all text-xs ${
                   selectedPreset === key
-                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 font-bold shadow-sm shadow-cyan-950"
                     : "bg-[#141b29] text-slate-400 hover:text-slate-200 border border-[#212c40]"
                 }`}
               >
-                {val.title}
+                <span>{val.title}</span>
+                <span className="text-[10px] text-slate-500 font-normal">{val.dimTag}</span>
               </button>
             ))}
           </div>
 
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+            {/* Stress Test / Self-Healing Toggle (Engineering Reframe) */}
+            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white select-none group">
               <input
                 type="checkbox"
                 checked={triggerFaultDemo}
                 onChange={(e) => setTriggerFaultDemo(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-purple-500 focus:ring-purple-500"
+                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-purple-500 focus:ring-purple-500 cursor-pointer"
               />
-              <span className="flex items-center gap-1.5 text-purple-300 font-semibold">
+              <span className="flex items-center gap-1.5 text-slate-300 group-hover:text-purple-300 transition-colors font-medium">
                 <Bug className="w-3.5 h-3.5 text-purple-400" />
-                Trigger Fault Demo (Self-Healing)
+                <span>Edge-Case Shape: <strong className="text-purple-300 font-semibold">N=4097</strong> (Unaligned Memory Stress)</span>
               </span>
             </label>
 
+            {/* Synthesize Button with Hotkey Badge */}
             <button
               onClick={runSynthesis}
               disabled={status === "COMPILING" || status === "BENCHMARKING" || status === "HEALING"}
-              className="flex items-center gap-2 px-5 py-2 rounded-md bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-bold tracking-wider transition-all disabled:opacity-50 shadow-lg shadow-emerald-500/20"
+              className="flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-bold tracking-wider transition-all disabled:opacity-50 shadow-md shadow-emerald-500/20 active:scale-[0.98]"
             >
               {status === "COMPILING" || status === "BENCHMARKING" || status === "HEALING" ? (
                 <>
                   <RotateCw className="w-4 h-4 animate-spin text-black" />
-                  PROCESSING...
+                  <span>PROCESSING...</span>
                 </>
               ) : (
                 <>
-                  <Play className="w-4 h-4 fill-black" />
-                  SYNTHESIZE &amp; COMPILE
+                  <Play className="w-3.5 h-3.5 fill-black" />
+                  <span>SYNTHESIZE &amp; COMPILE</span>
+                  <kbd className="hidden sm:inline-flex items-center gap-0.5 ml-1 px-1.5 py-0.5 rounded bg-black/25 text-[10px] font-mono text-black font-extrabold border border-black/10">
+                    <CornerDownLeft className="w-2.5 h-2.5" /> Ctrl ↵
+                  </kbd>
                 </>
               )}
             </button>
           </div>
         </div>
 
-        {/* 3-Column IDE Grid */}
-        <div className="flex-1 grid grid-cols-12 gap-4 min-h-0">
-          {/* Left Column: Monaco PyTorch Input */}
-          <div className="col-span-4 flex flex-col border border-[#1f293d] rounded-lg bg-[#0c1017] overflow-hidden">
+        {/* 3-Column IDE Grid with Optimal 27% / 43% / 30% Width Split */}
+        <div className="flex-1 flex gap-3.5 min-h-0">
+          {/* Left Column (27%): Monaco PyTorch Input */}
+          <div className="w-[27%] min-w-[270px] flex flex-col border border-[#1f293d] rounded-lg bg-[#0c1017] overflow-hidden">
             <div className="px-3 py-2 bg-[#0e1420] border-b border-[#1f293d] flex items-center justify-between text-xs font-mono text-slate-400">
               <span className="flex items-center gap-2">
                 <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                PYTORCH EAGER SOURCE
+                PYTORCH EAGER INPUT
               </span>
-              <span className="text-[10px] text-slate-500">INPUT AST</span>
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">REFERENCE OP</span>
             </div>
             <div className="flex-1 min-h-0">
               <Editor
@@ -276,19 +285,20 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Center Column: Monaco Generated Triton Output */}
-          <div className="col-span-5 flex flex-col border border-[#1f293d] rounded-lg bg-[#0c1017] overflow-hidden">
+          {/* Center Hero Column (43%): Monaco Synthesized Triton Output */}
+          <div className="w-[43%] min-w-[420px] flex flex-col border border-[#1f293d] rounded-lg bg-[#0c1017] overflow-hidden shadow-lg shadow-black/40">
             <div className="px-3 py-2 bg-[#0e1420] border-b border-[#1f293d] flex items-center justify-between text-xs font-mono text-slate-400">
               <span className="flex items-center gap-2">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                SYNTHESIZED OPENAI TRITON (@triton.jit)
+                <span className="font-semibold text-slate-200">SYNTHESIZED OPENAI TRITON</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-400 border border-emerald-800/50">@triton.jit</span>
               </span>
               <button
                 onClick={handleCopyCode}
-                className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#182030] hover:bg-[#202c42] text-[10px] text-slate-300 transition-colors"
+                className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#182030] hover:bg-[#202c42] text-[10px] text-slate-300 transition-colors border border-slate-700/50 font-semibold"
               >
                 {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                {copied ? "COPIED" : "COPY"}
+                {copied ? "COPIED" : "COPY KERNEL"}
               </button>
             </div>
             <div className="flex-1 min-h-0">
@@ -304,14 +314,15 @@ export default function Home() {
                   fontFamily: "JetBrains Mono, monospace",
                   lineNumbers: "on",
                   scrollBeyondLastLine: false,
-                  automaticLayout: true
+                  automaticLayout: true,
+                  wordWrap: "off" // Triton lines read clean with 43% width
                 }}
               />
             </div>
           </div>
 
-          {/* Right Column: Tri-Comparison Latency & Telemetry */}
-          <div className="col-span-3 flex flex-col min-h-0">
+          {/* Right Column (30%): Tri-Comparison Latency & Telemetry */}
+          <div className="w-[30%] min-w-[300px] flex flex-col min-h-0">
             <TriComparisonChart benchmark={benchmark} tilingPlan={tilingPlan} />
           </div>
         </div>
@@ -324,4 +335,3 @@ export default function Home() {
     </div>
   );
 }
-

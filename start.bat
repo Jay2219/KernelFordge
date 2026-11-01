@@ -27,3 +27,4 @@ echo.
 echo To view live logs: docker compose logs -f
 echo To stop: docker compose down
 pause
+

@@ -17,3 +17,4 @@ Write-Host "  • FastAPI Gateway:  http://localhost:8000" -ForegroundColor Whit
 Write-Host "  • Swagger API Docs: http://localhost:8000/docs`n" -ForegroundColor White
 
 Start-Process "http://localhost:3000"
+
