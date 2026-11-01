@@ -22,6 +22,7 @@ RUN uv pip install --system --no-cache -r requirements.txt
 # Copy source code and scripts
 COPY src/ ./src/
 COPY benchmarks/ ./benchmarks/
+COPY artifacts/ ./artifacts/
 COPY modal_runner.py sandbox_exec.py ./
 COPY .env.example .env
 

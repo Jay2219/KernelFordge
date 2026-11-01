@@ -22,9 +22,19 @@ interface BenchmarkData {
 interface TriComparisonChartProps {
   benchmark: BenchmarkData | null;
   tilingPlan?: any;
+  verifiedRunInfo?: {
+    isVerified: boolean;
+    runId?: string;
+    device?: string;
+    timestamp?: string;
+  } | null;
 }
 
-export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmark, tilingPlan }) => {
+export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ 
+  benchmark, 
+  tilingPlan,
+  verifiedRunInfo 
+}) => {
   const [activeTab, setActiveTab] = useState<"benchmark" | "roofline">("benchmark");
   const [isRooflineModalOpen, setIsRooflineModalOpen] = useState(false);
 
@@ -89,6 +99,29 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
         {activeTab === "benchmark" ? (
           <div className="flex-1 flex flex-col justify-between overflow-y-auto">
             <div>
+              {/* Verified Run or Live Synthesis Tag */}
+              {verifiedRunInfo?.isVerified ? (
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[11px] font-mono mb-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="font-semibold tracking-wide">VERIFIED RUN</span>
+                  </div>
+                  <span className="text-[10px] text-emerald-300 font-medium bg-emerald-500/15 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                    {verifiedRunInfo.runId} • {verifiedRunInfo.device || "NVIDIA A10G"}
+                  </span>
+                </div>
+              ) : verifiedRunInfo && !verifiedRunInfo.isVerified && benchmark ? (
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 text-[11px] font-mono mb-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span className="font-semibold tracking-wide">LIVE SYNTHESIS RUN</span>
+                  </div>
+                  <span className="text-[10px] text-cyan-300 font-medium bg-cyan-500/15 px-1.5 py-0.5 rounded border border-cyan-500/20">
+                    MODAL A10G POOL
+                  </span>
+                </div>
+              ) : null}
+
               {/* Speedup Hero Banner */}
               <div className="flex flex-col gap-1.5 mb-3 pb-2.5 border-b border-white/[0.06]">
                 <div className="flex items-baseline justify-between">
