@@ -71,20 +71,20 @@ class MockExecutionEngine:
             eager_us = 342.1
             compile_us = 134.8
             triton_us = 112.3
+            achieved_gbs = 528.4
+            saturation_pct = 88.1
         elif "swiglu" in op_lower or "silu" in op_lower:
             eager_us = 285.4
             compile_us = 142.0
             triton_us = 118.6
+            achieved_gbs = 510.2
+            saturation_pct = 85.0
         else:
             eager_us = 310.0
             compile_us = 155.0
             triton_us = 125.0
-
-        achieved_gbs, saturation_pct = compute_bandwidth_saturation(
-            total_bytes=total_bytes,
-            latency_us=triton_us,
-            peak_bandwidth_gbs=hardware.peak_bandwidth_gbs
-        )
+            achieved_gbs = 492.0
+            saturation_pct = 82.0
 
         speedup_eager = round(eager_us / triton_us, 2)
         speedup_compile = round(compile_us / triton_us, 2)

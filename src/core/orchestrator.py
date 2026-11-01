@@ -227,7 +227,7 @@ class KernelOrchestrator:
                     status="SUCCESS",
                     agent_name="Modal Subprocess Sandbox",
                     message=(
-                        f"Numerical Parity PASSED! Triton: {final_benchmark.triton_kernel_us:.1f}µs "
+                        f"Numerical Parity PASSED! Triton: {final_benchmark.triton_kernel_us:.1f}\u03bcs "
                         f"({final_benchmark.speedup_vs_eager:.2f}x vs Eager, {final_benchmark.speedup_vs_compile:.2f}x vs Compile) | "
                         f"Bandwidth: {final_benchmark.achieved_bandwidth_gbs:.1f} GB/s ({final_benchmark.bandwidth_saturation_pct:.1f}% Saturation)"
                     ),

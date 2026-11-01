@@ -21,10 +21,11 @@ const PRESETS = {
     shapes: [[32, 4096]],
     dtype: "float16",
     code: `def rms_norm_eager(x, weight, eps=1e-6):
-    # Standard PyTorch allocates 3 intermediate HBM buffers:
-    # 1. x.pow(2)
-    # 2. variance reduction
-    # 3. rsqrt inverse
+    # Eager RMSNorm allocates 3 intermediate HBM buffers:
+    # 1. x.pow(2) elementwise square pass
+    # 2. Mean reduction along hidden dimension (-1)
+    # 3. Reciprocal square root (rsqrt) and scaling
+    # KernelForge fuses these into a single SRAM tile pass.
     variance = x.pow(2).mean(-1, keepdim=True)
     return x * torch.rsqrt(variance + eps) * weight
 `
@@ -36,8 +37,10 @@ const PRESETS = {
     shapes: [[32, 11008]],
     dtype: "float16",
     code: `def swiglu_eager(gate, up):
-    # SwiGLU launches elementwise SiLU kernel followed by
-    # intermediate multiplication with up-projection
+    # Eager SwiGLU executes two separate kernel launches:
+    # 1. SiLU elementwise activation pass over gate tensor
+    # 2. Vectorized Hadamard multiplication with up-projection
+    # KernelForge fuses both operations into a single SRAM tile pass.
     return torch.nn.functional.silu(gate) * up
 `
   },
@@ -48,7 +51,11 @@ const PRESETS = {
     shapes: [[32, 4096]],
     dtype: "float16",
     code: `def softmax_eager(scores):
-    # Softmax requires normalizer max tracking and sum reductions
+    # Standard eager Softmax requires 3 passes over HBM:
+    # 1. Row-max reduction for numerical stability (exp(x - max))
+    # 2. Exponentiation and sum reduction for denominator
+    # 3. Elementwise division (Softmax)
+    # KernelForge synthesizes a 1-pass online Flash-Softmax.
     return torch.softmax(scores, dim=-1)
 `
   }
@@ -204,14 +211,14 @@ export default function Home() {
               <button
                 key={key}
                 onClick={() => handlePresetSelect(key as keyof typeof PRESETS)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-all text-xs ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-all text-xs font-medium ${
                   selectedPreset === key
-                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 font-bold shadow-sm shadow-cyan-950"
-                    : "bg-[#141b29] text-slate-400 hover:text-slate-200 border border-[#212c40]"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/60 font-bold shadow-sm shadow-cyan-950"
+                    : "bg-slate-900/80 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 hover:border-slate-500"
                 }`}
               >
                 <span>{val.title}</span>
-                <span className="text-[10px] text-slate-500 font-normal">{val.dimTag}</span>
+                <span className={`text-[10px] font-normal ${selectedPreset === key ? "text-cyan-400" : "text-slate-400"}`}>{val.dimTag}</span>
               </button>
             ))}
           </div>
@@ -223,11 +230,11 @@ export default function Home() {
                 type="checkbox"
                 checked={triggerFaultDemo}
                 onChange={(e) => setTriggerFaultDemo(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-purple-500 focus:ring-purple-500 cursor-pointer"
+                className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-0 focus:ring-offset-0 accent-teal-500 cursor-pointer"
               />
-              <span className="flex items-center gap-1.5 text-slate-300 group-hover:text-purple-300 transition-colors font-medium">
-                <Bug className="w-3.5 h-3.5 text-purple-400" />
-                <span>Edge-Case Shape: <strong className="text-purple-300 font-semibold">N=4097</strong> (Unaligned Memory Stress)</span>
+              <span className="flex items-center gap-1.5 text-slate-300 group-hover:text-teal-300 transition-colors font-medium">
+                <Bug className="w-3.5 h-3.5 text-teal-400" />
+                <span>Edge-Case Shape: <strong className="text-teal-300 font-semibold">N=4097</strong> (Unaligned Memory Stress)</span>
               </span>
             </label>
 
