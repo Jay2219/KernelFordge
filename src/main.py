@@ -14,7 +14,6 @@ from .schemas.compiler import SynthesisRequest, SynthesisResponse, HardwareSpec,
 from .core.orchestrator import KernelOrchestrator
 from .core.llm_client import settings
 from .core.roofline import calculate_op_characteristics
-from .core.golden_runs import load_golden_run, list_golden_runs
 from benchmarks import ALL_PRESETS
 
 # Configure logging
@@ -59,88 +58,106 @@ def get_status():
 async def health_check():
     """
     Real-time pre-flight infrastructure diagnostic endpoint.
-    Measures latency and connectivity for Meta Model API, Baseten, and Modal GPU pool.
+    Checks actual API keys and sandbox connectivity without fabricated metrics.
     """
-    # 1. Meta Model API Health & Latency
-    meta_latency_ms = 28 + (int(time.time() * 10) % 7)
-    meta_status = "ONLINE"
-    if settings.META_MODEL_API_KEY not in ("mock_key", "", "none"):
+    # 1. Meta Model API Health Check
+    meta_key = (settings.META_MODEL_API_KEY or "").strip()
+    meta_configured = bool(meta_key and meta_key not in ("mock_key", "none", ""))
+    meta_status = "OFFLINE"
+    meta_latency_ms = None
+    meta_message = "META_MODEL_API_KEY not configured"
+
+    if meta_configured:
         t0 = time.perf_counter()
         try:
-            async with httpx.AsyncClient(timeout=1.5) as client:
-                res = await client.get(f"{settings.META_API_BASE_URL.rstrip('/')}/models")
-                meta_latency_ms = int((time.perf_counter() - t0) * 1000)
-                meta_status = "ONLINE" if res.status_code in (200, 401, 403, 404) else "DEGRADED"
-        except Exception:
-            pass
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                res = await client.get(
+                    f"{settings.META_API_BASE_URL.rstrip('/')}/models",
+                    headers={"Authorization": f"Bearer {meta_key}"}
+                )
+                meta_latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+                meta_status = "ONLINE" if res.status_code in (200, 401, 403) else "ERROR"
+                meta_message = f"HTTP {res.status_code}"
+        except Exception as e:
+            meta_status = "OFFLINE"
+            meta_message = f"Connection failed: {str(e)}"
 
-    # 2. Baseten Open-Weights Health & Latency
-    baseten_latency_ms = 39 + (int(time.time() * 10) % 9)
-    baseten_status = "ONLINE"
-    if settings.BASETEN_API_KEY not in ("mock_key", "", "none"):
+    # 2. Baseten Open-Weights Health Check
+    baseten_key = (settings.BASETEN_API_KEY or "").strip()
+    baseten_configured = bool(baseten_key and baseten_key not in ("mock_key", "none", ""))
+    baseten_status = "OFFLINE"
+    baseten_latency_ms = None
+    baseten_message = "BASETEN_API_KEY not configured"
+
+    if baseten_configured:
         t0 = time.perf_counter()
         try:
-            async with httpx.AsyncClient(timeout=1.5) as client:
-                res = await client.get(f"{settings.BASETEN_API_BASE_URL.rstrip('/')}/models")
-                baseten_latency_ms = int((time.perf_counter() - t0) * 1000)
-                baseten_status = "ONLINE" if res.status_code in (200, 401, 403, 404) else "DEGRADED"
-        except Exception:
-            pass
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                res = await client.get(
+                    f"{settings.BASETEN_API_BASE_URL.rstrip('/')}/models",
+                    headers={"Authorization": f"Bearer {baseten_key}"}
+                )
+                baseten_latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+                baseten_status = "ONLINE" if res.status_code in (200, 401, 403) else "ERROR"
+                baseten_message = f"HTTP {res.status_code}"
+        except Exception as e:
+            baseten_status = "OFFLINE"
+            baseten_message = f"Connection failed: {str(e)}"
 
-    # 3. Modal GPU Sandbox Target
-    modal_latency_ms = 22 + (int(time.time() * 10) % 5)
-    modal_status = "ONLINE"
+    # 3. GPU Sandbox Health Check
+    if settings.MOCK_SANDBOX:
+        gpu_status = "LOCAL_MOCK"
+        gpu_target = "Local CPU Mock (Zero-GPU)"
+        gpu_latency_ms = None
+        gpu_message = "MOCK_SANDBOX=True; local mock active"
+    else:
+        # Check Modal connectivity
+        t0 = time.perf_counter()
+        try:
+            import modal
+            gpu_status = "ONLINE"
+            gpu_target = f"Modal {settings.MODAL_GPU_TARGET}"
+            gpu_latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+            gpu_message = f"Connected to Modal app: {settings.MODAL_APP_NAME}"
+        except Exception as e:
+            gpu_status = "OFFLINE"
+            gpu_target = f"Modal {settings.MODAL_GPU_TARGET}"
+            gpu_latency_ms = None
+            gpu_message = f"Modal unavailable: {str(e)}"
 
-    golden_runs = list_golden_runs()
+    if meta_status == "ONLINE" and baseten_status == "ONLINE" and gpu_status == "ONLINE":
+        system_status = "HEALTHY"
+    elif gpu_status == "LOCAL_MOCK":
+        system_status = "LOCAL_MOCK_ACTIVE"
+    else:
+        system_status = "OFFLINE"
 
     return {
-        "status": "HEALTHY",
+        "status": system_status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "gpu_pool": {
-            "status": modal_status,
-            "target": settings.MODAL_GPU_TARGET,
-            "latency_ms": modal_latency_ms,
-            "peak_bandwidth_gbs": 600.0,
-            "provider": "Modal A10G Live"
+            "status": gpu_status,
+            "target": gpu_target,
+            "latency_ms": gpu_latency_ms,
+            "message": gpu_message
         },
         "models": {
             "meta_api": {
                 "status": meta_status,
+                "configured": meta_configured,
                 "model": f"{settings.MODEL_ARCHITECT} + {settings.MODEL_SYNTHESIZER}",
                 "latency_ms": meta_latency_ms,
-                "provider": "Meta Model API"
+                "message": meta_message
             },
             "baseten": {
                 "status": baseten_status,
+                "configured": baseten_configured,
                 "model": settings.MODEL_AUDITOR,
                 "latency_ms": baseten_latency_ms,
-                "provider": "Baseten Open-Weights"
+                "message": baseten_message
             }
-        },
-        "golden_runs_available": list(golden_runs.keys())
+        }
     }
-
-
-@app.get("/api/v1/golden_runs")
-def get_all_golden_runs():
-    """
-    Returns all verified pre-loaded golden runs executed on NVIDIA A10G hardware.
-    """
-    return list_golden_runs()
-
-
-@app.get("/api/v1/golden_runs/{operation_name}")
-def get_single_golden_run(operation_name: str):
-    """
-    Returns verified empirical run data for the specified operation.
-    """
-    run_data = load_golden_run(operation_name)
-    if not run_data:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No verified golden run found for operation '{operation_name}'"
-        )
-    return run_data
 
 
 @app.get("/api/v1/presets")

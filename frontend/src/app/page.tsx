@@ -4,10 +4,9 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { TriComparisonChart } from "../components/TriComparisonChart";
 import { TerminalLog, ExecutionStep } from "../components/TerminalLog";
-import { VERIFIED_GOLDEN_RUNS, GoldenRun } from "../data/goldenRuns";
 import { 
   Zap, Cpu, Check, Copy, Play, RotateCw, 
-  Layers, Sparkles, CornerDownLeft, Bug, CheckCircle 
+  Layers, Sparkles, Bug 
 } from "lucide-react";
 
 // Dynamically import Monaco Editor to avoid SSR hydration issues
@@ -21,22 +20,23 @@ interface HealthState {
   gpu_pool: {
     status: string;
     target: string;
-    latency_ms: number;
-    peak_bandwidth_gbs: number;
-    provider: string;
+    latency_ms: number | null;
+    message: string;
   };
   models: {
     meta_api: {
       status: string;
+      configured: boolean;
       model: string;
-      latency_ms: number;
-      provider: string;
+      latency_ms: number | null;
+      message: string;
     };
     baseten: {
       status: string;
+      configured: boolean;
       model: string;
-      latency_ms: number;
-      provider: string;
+      latency_ms: number | null;
+      message: string;
     };
   };
 }
@@ -86,32 +86,19 @@ const PRESETS = {
   }
 };
 
-interface VerifiedRunInfo {
-  isVerified: boolean;
-  runId?: string;
-  device?: string;
-  timestamp?: string;
-}
-
 export default function KernelForgeWorkbench() {
   const [selectedPreset, setSelectedPreset] = useState<keyof typeof PRESETS>("fused_rms_norm");
-  const initialGolden = VERIFIED_GOLDEN_RUNS.fused_rms_norm;
-  
-  const [pytorchCode, setPytorchCode] = useState(initialGolden.pytorch_source);
-  const [tritonCode, setTritonCode] = useState<string>(initialGolden.triton_source_code);
-  const [status, setStatus] = useState<"IDLE" | "COMPILING" | "BENCHMARKING" | "HEALING" | "COMPLETED" | "ERROR">("COMPLETED");
-  const [steps, setSteps] = useState<ExecutionStep[]>(initialGolden.steps as any);
-  const [benchmark, setBenchmark] = useState<any>(initialGolden.benchmark);
-  const [tilingPlan, setTilingPlan] = useState<any>(initialGolden.tiling_plan);
+  const [pytorchCode, setPytorchCode] = useState(PRESETS.fused_rms_norm.code);
+  const [tritonCode, setTritonCode] = useState<string>(
+    "# Click 'Synthesize & Compile' (Ctrl + Enter) to generate custom Triton kernel...\n"
+  );
+  const [status, setStatus] = useState<"IDLE" | "COMPILING" | "BENCHMARKING" | "HEALING" | "COMPLETED" | "ERROR">("IDLE");
+  const [steps, setSteps] = useState<ExecutionStep[]>([]);
+  const [benchmark, setBenchmark] = useState<any>(null);
+  const [tilingPlan, setTilingPlan] = useState<any>(null);
   const [triggerFaultDemo, setTriggerFaultDemo] = useState(false);
   const [copied, setCopied] = useState(false);
   const [health, setHealth] = useState<HealthState | null>(null);
-  const [verifiedRunInfo, setVerifiedRunInfo] = useState<VerifiedRunInfo | null>({
-    isVerified: true,
-    runId: initialGolden.run_id,
-    device: initialGolden.hardware.gpu_name,
-    timestamp: initialGolden.timestamp
-  });
 
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -125,7 +112,7 @@ export default function KernelForgeWorkbench() {
           setHealth(data);
         }
       } catch {
-        // Retain fallback telemetry
+        // Leave health as null on connection error
       }
     };
     fetchHealth();
@@ -135,29 +122,12 @@ export default function KernelForgeWorkbench() {
 
   const handlePresetSelect = (key: keyof typeof PRESETS) => {
     setSelectedPreset(key);
-    const golden = VERIFIED_GOLDEN_RUNS[key];
-    if (golden) {
-      setPytorchCode(golden.pytorch_source);
-      setTritonCode(golden.triton_source_code);
-      setBenchmark(golden.benchmark);
-      setTilingPlan(golden.tiling_plan);
-      setSteps(golden.steps as any);
-      setStatus("COMPLETED");
-      setVerifiedRunInfo({
-        isVerified: true,
-        runId: golden.run_id,
-        device: golden.hardware.gpu_name,
-        timestamp: golden.timestamp
-      });
-    } else {
-      setPytorchCode(PRESETS[key].code);
-      setTritonCode("# Click 'Synthesize & Compile' to generate custom Triton kernel...\n");
-      setBenchmark(null);
-      setTilingPlan(null);
-      setSteps([]);
-      setStatus("IDLE");
-      setVerifiedRunInfo(null);
-    }
+    setPytorchCode(PRESETS[key].code);
+    setTritonCode("# Click 'Synthesize & Compile' (Ctrl + Enter) to generate custom Triton kernel...\n");
+    setBenchmark(null);
+    setTilingPlan(null);
+    setSteps([]);
+    setStatus("IDLE");
   };
 
   const handleCopyCode = () => {
@@ -173,7 +143,6 @@ export default function KernelForgeWorkbench() {
     setSteps([]);
     setBenchmark(null);
     setTilingPlan(null);
-    setVerifiedRunInfo({ isVerified: false });
 
     const payload = {
       session_id: `session-${Date.now()}`,
@@ -268,10 +237,6 @@ export default function KernelForgeWorkbench() {
   }, [runSynthesis]);
 
   const isBusy = status === "COMPILING" || status === "BENCHMARKING" || status === "HEALING";
-  const modalLatency = health?.gpu_pool?.latency_ms ?? 24;
-  const basetenLatency = health?.models?.baseten?.latency_ms ?? 42;
-  const metaLatency = health?.models?.meta_api?.latency_ms ?? 31;
-
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#07090E] text-slate-200 font-sans select-none">
       
@@ -290,30 +255,67 @@ export default function KernelForgeWorkbench() {
 
           <div className="h-4 w-px bg-white/[0.08] mx-1" />
 
-          {/* Infrastructure Diagnostic Badges */}
+          {/* Real Diagnostic Badges */}
           <div className="flex items-center gap-2 text-xs">
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/[0.06] text-slate-300">
               <Cpu className="w-3.5 h-3.5 text-cyan-400" />
               <span>A10G <span className="text-slate-500 text-[11px]">(600 GB/s)</span></span>
             </div>
 
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 text-[11px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-              <span className="font-medium">Muse Wonder + Code</span>
-              <span className="text-[10px] font-mono text-cyan-400/80 font-medium">({metaLatency}ms)</span>
-            </div>
+            {/* Meta Model API Status */}
+            {health?.models?.meta_api?.status === "ONLINE" ? (
+              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                <span className="font-medium">Muse Wonder + Code</span>
+                {health.models.meta_api.latency_ms !== null && (
+                  <span className="text-[10px] font-mono text-cyan-400/80 font-medium">({health.models.meta_api.latency_ms}ms)</span>
+                )}
+              </div>
+            ) : (
+              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/[0.06] text-slate-400 text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                <span className="text-slate-400">Meta API:</span>
+                <span className="text-slate-500 font-mono">Unconfigured</span>
+              </div>
+            )}
 
-            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-300 font-medium text-[11px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              <span>Baseten Open-Weights</span>
-              <span className="text-[10px] font-mono text-amber-400/80 font-medium">({basetenLatency}ms)</span>
-            </div>
+            {/* Baseten Open-Weights Status */}
+            {health?.models?.baseten?.status === "ONLINE" ? (
+              <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-300 font-medium text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span>Baseten Open-Weights</span>
+                {health.models.baseten.latency_ms !== null && (
+                  <span className="text-[10px] font-mono text-amber-400/80 font-medium">({health.models.baseten.latency_ms}ms)</span>
+                )}
+              </div>
+            ) : (
+              <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/[0.06] text-slate-400 text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                <span className="text-slate-400">Baseten:</span>
+                <span className="text-slate-500 font-mono">Unconfigured</span>
+              </div>
+            )}
 
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Modal A10G Live</span>
-              <span className="text-[10px] font-mono text-emerald-400/90 font-medium">({modalLatency}ms)</span>
-            </div>
+            {/* GPU Sandbox Status */}
+            {health?.gpu_pool?.status === "ONLINE" ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Modal A10G Live</span>
+                {health.gpu_pool.latency_ms !== null && (
+                  <span className="text-[10px] font-mono text-emerald-400/90 font-medium">({health.gpu_pool.latency_ms}ms)</span>
+                )}
+              </div>
+            ) : health?.gpu_pool?.status === "LOCAL_MOCK" ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/25 text-amber-300 text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span>Sandbox: Local Mock</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/[0.06] text-slate-400 text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                <span>Sandbox: Offline</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -424,12 +426,6 @@ export default function KernelForgeWorkbench() {
               <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
                 @triton.jit
               </span>
-              {verifiedRunInfo?.isVerified && (
-                <span className="hidden sm:flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono font-medium">
-                  <CheckCircle className="w-3 h-3 text-emerald-400" />
-                  <span>VERIFIED: {verifiedRunInfo.runId}</span>
-                </span>
-              )}
             </div>
             <button
               onClick={handleCopyCode}
@@ -464,7 +460,6 @@ export default function KernelForgeWorkbench() {
           <TriComparisonChart 
             benchmark={benchmark} 
             tilingPlan={tilingPlan} 
-            verifiedRunInfo={verifiedRunInfo} 
           />
         </section>
       </main>

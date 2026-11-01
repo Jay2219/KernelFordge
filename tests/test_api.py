@@ -56,32 +56,14 @@ def test_health_endpoint():
     response = client.get("/api/v1/health")
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "HEALTHY"
+    assert "status" in data
     assert "gpu_pool" in data
-    assert data["gpu_pool"]["target"] == "A10G"
-    assert data["gpu_pool"]["latency_ms"] > 0
     assert "models" in data
     assert "meta_api" in data["models"]
     assert "baseten" in data["models"]
-    assert len(data["golden_runs_available"]) >= 3
+    # Verify honest reporting: with mock/unconfigured keys, models report not configured
+    assert data["models"]["meta_api"]["configured"] is False
+    assert data["models"]["baseten"]["configured"] is False
 
-
-def test_golden_runs_endpoints():
-    # List all
-    response = client.get("/api/v1/golden_runs")
-    assert response.status_code == 200
-    runs = response.json()
-    assert "fused_rms_norm" in runs
-    assert "fused_swiglu" in runs
-    assert "fused_softmax" in runs
-
-    # Get single
-    rms_resp = client.get("/api/v1/golden_runs/fused_rms_norm")
-    assert rms_resp.status_code == 200
-    rms_data = rms_resp.json()
-    assert rms_data["run_id"] == "#a10g-rms-042"
-    assert rms_data["benchmark"]["triton_kernel_us"] == 112.3
-    assert rms_data["benchmark"]["speedup_vs_eager"] == 3.05
-    assert rms_data["benchmark"]["numerical_parity_verified"] is True
 
 
