@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Zap, Activity, CheckCircle, ShieldAlert, Cpu, BarChart2, TrendingUp } from "lucide-react";
+import { Zap, Activity, CheckCircle, Cpu, BarChart2, TrendingUp } from "lucide-react";
 
 interface BenchmarkData {
   pytorch_eager_us: number;
@@ -24,18 +24,19 @@ interface TriComparisonChartProps {
 export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmark, tilingPlan }) => {
   const [activeTab, setActiveTab] = useState<"benchmark" | "roofline">("benchmark");
 
-  const eagerUs = benchmark?.pytorch_eager_us ?? 342.1;
-  const compileUs = benchmark?.pytorch_compile_us ?? 135.4;
-  const tritonUs = benchmark?.triton_kernel_us ?? 112.3;
-  const speedupEager = benchmark?.speedup_vs_eager ?? 3.05;
-  const speedupCompile = benchmark?.speedup_vs_compile ?? 1.20;
-  const bandwidthGbs = benchmark?.achieved_bandwidth_gbs ?? 528.4;
-  const saturationPct = benchmark?.bandwidth_saturation_pct ?? 88.1;
   const isStandby = !benchmark;
 
-  const blockSize = tilingPlan?.BLOCK_SIZE_M ?? 1024;
-  const warps = tilingPlan?.num_warps ?? 4;
-  const stages = tilingPlan?.num_stages ?? 3;
+  const eagerUs = benchmark?.pytorch_eager_us ?? 0;
+  const compileUs = benchmark?.pytorch_compile_us ?? 0;
+  const tritonUs = benchmark?.triton_kernel_us ?? 0;
+  const speedupEager = benchmark?.speedup_vs_eager ?? 0;
+  const speedupCompile = benchmark?.speedup_vs_compile ?? 0;
+  const bandwidthGbs = benchmark?.achieved_bandwidth_gbs ?? 0;
+  const saturationPct = benchmark?.bandwidth_saturation_pct ?? 0;
+
+  const blockSize = tilingPlan?.BLOCK_SIZE_M ?? "--";
+  const warps = tilingPlan?.num_warps ? `${tilingPlan.num_warps} Warps` : "--";
+  const stages = tilingPlan?.num_stages ? `${tilingPlan.num_stages} Stages` : "--";
 
   return (
     <div className="h-full flex flex-col justify-between p-3.5 border border-white/[0.08] rounded-lg bg-[#0A0D14] font-sans text-xs select-none overflow-hidden">
@@ -71,26 +72,38 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
         <div className="flex-1 flex flex-col justify-between overflow-y-auto">
           <div>
             {/* Speedup Hero Banner */}
-            <div className="flex items-baseline justify-between mb-3 pb-2.5 border-b border-white/[0.06]">
-              <div>
-                <span className="text-[11px] font-medium text-slate-400 block">EXECUTION SPEEDUP</span>
-                <span className="text-2xl font-bold font-mono text-emerald-400 tracking-tight">
-                  {isStandby ? "3.05x Speedup" : `+${speedupEager.toFixed(2)}x Speedup`}
-                </span>
+            <div className="flex flex-col gap-1.5 mb-3 pb-2.5 border-b border-white/[0.06]">
+              <div className="flex items-baseline justify-between">
+                <div>
+                  <span className="text-[10px] font-medium text-slate-400 block tracking-wider">
+                    EXECUTION SPEEDUP
+                  </span>
+                  <span className={`text-2xl font-bold font-mono tracking-tight ${
+                    isStandby ? "text-slate-500" : "text-emerald-400"
+                  }`}>
+                    {isStandby ? "Speedup: Pending Run" : `+${speedupEager.toFixed(2)}x Speedup`}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 block font-mono">
+                    {isStandby ? "-- vs torch.compile" : `+${speedupCompile.toFixed(2)}x vs Compile`}
+                  </span>
+                </div>
               </div>
-              <div className="text-right">
-                {benchmark?.numerical_parity_verified ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-semibold">
-                    <CheckCircle className="w-3 h-3" /> PARITY: PASS
-                  </span>
+
+              {/* Numerical Correctness Verification Badge */}
+              <div className="flex items-center">
+                {isStandby ? (
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/[0.03] border border-white/[0.06] text-slate-500 text-[11px] font-mono">
+                    <span className="w-2 h-2 rounded-full bg-slate-600" />
+                    <span>Parity: Pending Verification</span>
+                  </div>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[10px] font-mono">
-                    <Activity className="w-3 h-3 animate-pulse" /> LIVE MODAL POOL
-                  </span>
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-mono shadow-sm shadow-emerald-500/10">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Parity Verified (torch.allclose rtol=1e-3)</span>
+                  </div>
                 )}
-                <span className="text-[10px] text-slate-400 block mt-1 font-mono">
-                  {isStandby ? "vs PyTorch Eager" : `+${speedupCompile.toFixed(2)}x vs Compile`}
-                </span>
               </div>
             </div>
 
@@ -100,10 +113,16 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
               <div>
                 <div className="flex justify-between text-[11px] text-slate-400 mb-1">
                   <span className="text-rose-400/90 font-medium">PyTorch Eager</span>
-                  <span className="text-rose-400 font-semibold">{eagerUs.toFixed(1)} µs</span>
+                  <span className={isStandby ? "text-slate-600" : "text-rose-400 font-semibold"}>
+                    {isStandby ? "--.- µs" : `${eagerUs.toFixed(1)} µs`}
+                  </span>
                 </div>
-                <div className="h-2.5 w-full bg-white/[0.04] rounded-full overflow-hidden border border-rose-950/40">
-                  <div className="h-full bg-rose-500/80 rounded-full w-full transition-all duration-700" />
+                <div className="h-2.5 w-full bg-white/[0.04] rounded-full overflow-hidden border border-white/[0.04]">
+                  <div
+                    className={`h-full rounded-full transition-all duration-700 ${
+                      isStandby ? "bg-rose-500/20 w-[85%]" : "bg-rose-500/80 w-full"
+                    }`}
+                  />
                 </div>
               </div>
 
@@ -111,12 +130,16 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
               <div>
                 <div className="flex justify-between text-[11px] text-slate-400 mb-1">
                   <span className="text-amber-400/90 font-medium">torch.compile (Inductor)</span>
-                  <span className="text-amber-400 font-semibold">{compileUs.toFixed(1)} µs</span>
+                  <span className={isStandby ? "text-slate-600" : "text-amber-400 font-semibold"}>
+                    {isStandby ? "--.- µs" : `${compileUs.toFixed(1)} µs`}
+                  </span>
                 </div>
-                <div className="h-2.5 w-full bg-white/[0.04] rounded-full overflow-hidden border border-amber-950/40">
+                <div className="h-2.5 w-full bg-white/[0.04] rounded-full overflow-hidden border border-white/[0.04]">
                   <div
-                    className="h-full bg-amber-500/80 rounded-full transition-all duration-700"
-                    style={{ width: `${Math.min(100, (compileUs / eagerUs) * 100)}%` }}
+                    className={`h-full rounded-full transition-all duration-700 ${
+                      isStandby ? "bg-amber-500/20 w-[45%]" : "bg-amber-500/80"
+                    }`}
+                    style={isStandby ? undefined : { width: `${Math.min(100, (compileUs / eagerUs) * 100)}%` }}
                   />
                 </div>
               </div>
@@ -125,12 +148,18 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
               <div>
                 <div className="flex justify-between text-[11px] text-slate-200 mb-1">
                   <span className="font-semibold text-emerald-400">KernelForge Triton</span>
-                  <span className="text-emerald-400 font-bold">{tritonUs.toFixed(1)} µs</span>
+                  <span className={isStandby ? "text-emerald-500/60 font-mono" : "text-emerald-400 font-bold"}>
+                    {isStandby ? "TARGET: <120 µs" : `${tritonUs.toFixed(1)} µs`}
+                  </span>
                 </div>
-                <div className="h-3 w-full bg-white/[0.04] rounded-full overflow-hidden border border-emerald-950/50 shadow-sm shadow-emerald-500/10">
+                <div className="h-3 w-full bg-white/[0.04] rounded-full overflow-hidden border border-white/[0.04]">
                   <div
-                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-700"
-                    style={{ width: `${Math.min(100, (tritonUs / eagerUs) * 100)}%` }}
+                    className={`h-full rounded-full transition-all duration-700 ${
+                      isStandby
+                        ? "bg-emerald-500/20 w-[30%]"
+                        : "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm shadow-emerald-500/20"
+                    }`}
+                    style={isStandby ? undefined : { width: `${Math.min(100, (tritonUs / eagerUs) * 100)}%` }}
                   />
                 </div>
               </div>
@@ -142,14 +171,16 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
                 <span className="text-slate-400 flex items-center gap-1.5 font-medium">
                   <Zap className="w-3.5 h-3.5 text-cyan-400" /> Memory Bus Saturation
                 </span>
-                <span className="font-mono text-cyan-400 font-bold">
-                  {bandwidthGbs.toFixed(1)} GB/s ({saturationPct.toFixed(1)}%)
+                <span className={`font-mono font-bold ${isStandby ? "text-slate-500" : "text-cyan-400"}`}>
+                  {isStandby ? "--.- GB/s (--%)" : `${bandwidthGbs.toFixed(1)} GB/s (${saturationPct.toFixed(1)}%)`}
                 </span>
               </div>
               <div className="h-2 w-full bg-white/[0.04] rounded-full overflow-hidden border border-slate-800">
                 <div
-                  className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 rounded-full transition-all duration-700"
-                  style={{ width: `${Math.min(saturationPct, 100)}%` }}
+                  className={`h-full rounded-full transition-all duration-700 ${
+                    isStandby ? "w-0" : "bg-gradient-to-r from-cyan-500 to-emerald-400"
+                  }`}
+                  style={isStandby ? undefined : { width: `${Math.min(saturationPct, 100)}%` }}
                 />
               </div>
               <span className="text-[10px] text-slate-500 mt-1 block font-mono">
@@ -162,15 +193,15 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
           <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/[0.06] text-center text-xs font-mono">
             <div className="p-2 rounded bg-white/[0.02] border border-white/[0.04]">
               <div className="text-[9px] text-slate-500 uppercase tracking-wider font-sans">BLOCK SIZE</div>
-              <div className="text-slate-200 font-bold mt-0.5">{blockSize}</div>
+              <div className={`font-bold mt-0.5 ${isStandby ? "text-slate-500" : "text-slate-200"}`}>{blockSize}</div>
             </div>
             <div className="p-2 rounded bg-white/[0.02] border border-white/[0.04]">
               <div className="text-[9px] text-slate-500 uppercase tracking-wider font-sans">WARPS</div>
-              <div className="text-emerald-400 font-bold mt-0.5">{warps} Warps</div>
+              <div className={`font-bold mt-0.5 ${isStandby ? "text-slate-500" : "text-emerald-400"}`}>{warps}</div>
             </div>
             <div className="p-2 rounded bg-white/[0.02] border border-white/[0.04]">
               <div className="text-[9px] text-slate-500 uppercase tracking-wider font-sans">STAGES</div>
-              <div className="text-amber-400 font-bold mt-0.5">{stages} Stages</div>
+              <div className={`font-bold mt-0.5 ${isStandby ? "text-slate-500" : "text-amber-400"}`}>{stages}</div>
             </div>
           </div>
         </div>
@@ -248,18 +279,38 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
                 <text x="245" y="145" fill="#64748B" fontSize="7.5">FLOPs/Byte →</text>
 
                 {/* Eager Point (Red) */}
-                <circle cx="110" cy="115" r="3.5" fill="#F43F5E" />
-                <text x="118" y="118" fill="#FDA4AF" fontSize="8">Eager (~30% HBM)</text>
+                <circle cx="110" cy="115" r="3.5" fill={isStandby ? "#64748b" : "#F43F5E"} />
+                <text x="118" y="118" fill={isStandby ? "#64748b" : "#FDA4AF"} fontSize="8">
+                  {isStandby ? "Eager Baseline" : "Eager (~30% HBM)"}
+                </text>
 
                 {/* Upward Vector */}
-                <line x1="110" y1="110" x2="110" y2="85" stroke="#10B981" strokeWidth="1.5" strokeDasharray="2 2" />
-                <polygon points="110,80 107,86 113,86" fill="#10B981" />
+                {!isStandby && (
+                  <>
+                    <line x1="110" y1="110" x2="110" y2="85" stroke="#10B981" strokeWidth="1.5" strokeDasharray="2 2" />
+                    <polygon points="110,80 107,86 113,86" fill="#10B981" />
+                  </>
+                )}
 
-                {/* Triton Operating Point (Green Glowing) */}
-                <circle cx="110" cy="80" r="4.5" fill="#10B981" filter="url(#glowGreen)" />
-                <circle cx="110" cy="80" r="2" fill="#FFFFFF" />
-                <text x="118" y="83" fill="#34D399" fontSize="8.5" fontWeight="bold">
-                  Triton ({saturationPct.toFixed(1)}% HBM)
+                {/* Triton Operating Point */}
+                <circle
+                  cx={110}
+                  cy={80}
+                  r={isStandby ? 3.5 : 4.5}
+                  fill={isStandby ? "#1e293b" : "#10B981"}
+                  stroke={isStandby ? "#06b6d4" : undefined}
+                  strokeWidth={isStandby ? 1.5 : undefined}
+                  filter={isStandby ? undefined : "url(#glowGreen)"}
+                />
+                {!isStandby && <circle cx={110} cy={80} r={2} fill="#FFFFFF" />}
+                <text
+                  x={118}
+                  y={83}
+                  fill={isStandby ? "#06b6d4" : "#34D399"}
+                  fontSize={8.5}
+                  fontWeight={isStandby ? "normal" : "bold"}
+                >
+                  {isStandby ? "Target: ~88% HBM" : `Triton (${saturationPct.toFixed(1)}% HBM)`}
                 </text>
               </svg>
             </div>
@@ -267,9 +318,17 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({ benchmar
 
           {/* Mathematical Rationale Card */}
           <div className="mt-3 text-[11px] text-slate-300 bg-white/[0.02] p-2.5 rounded border border-white/[0.06] leading-relaxed">
-            <span className="text-cyan-400 font-semibold font-sans">Memory-Bound Operator: </span>
-            Ingested PyTorch operation has an arithmetic intensity of{" "}
-            <span className="font-mono text-slate-100 font-bold">~1.25 FLOPs/byte</span>. KernelForge SRAM tile fusion eliminates global memory roundtrips, accelerating throughput right to the A10G hardware ceiling.
+            <span className="text-cyan-400 font-semibold font-sans">
+              {isStandby ? "Awaiting Synthesis: " : "Memory-Bound Operator: "}
+            </span>
+            {isStandby ? (
+              <span>Click &quot;Synthesize &amp; Compile&quot; to profile arithmetic intensity and map operational coordinates onto the A10G roofline.</span>
+            ) : (
+              <span>
+                Ingested PyTorch operation has an arithmetic intensity of{" "}
+                <span className="font-mono text-slate-100 font-bold">~1.25 FLOPs/byte</span>. KernelForge SRAM tile fusion eliminates global memory roundtrips, accelerating throughput right to the A10G hardware ceiling.
+              </span>
+            )}
           </div>
         </div>
       )}

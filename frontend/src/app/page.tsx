@@ -23,10 +23,10 @@ const PRESETS = {
     shapes: [[32, 4096]],
     dtype: "float16",
     code: `def rms_norm_eager(x: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    # Standard PyTorch Eager allocates 3 intermediate HBM buffers:
+    # PyTorch Eager allocates 3 intermediate HBM buffers:
     # 1. Elementwise square: x.pow(2)
-    # 2. Reduction across hidden dim: variance = mean(-1)
-    # 3. Normalization & scale: x * rsqrt(variance + eps) * weight
+    # 2. Reduction across dim: variance = mean(-1)
+    # 3. Scale & norm: x * rsqrt(variance + eps) * weight
     variance = x.pow(2).mean(-1, keepdim=True)
     return x * torch.rsqrt(variance + eps) * weight
 `
@@ -38,9 +38,9 @@ const PRESETS = {
     shapes: [[32, 11008]],
     dtype: "float16",
     code: `def swiglu_eager(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
-    # SwiGLU requires 2 separate kernel launches in eager mode:
-    # 1. SiLU activation: silu(gate) = gate * sigmoid(gate)
-    # 2. Elementwise multiplication with up-projection
+    # Eager SwiGLU requires 2 separate kernel launches:
+    # 1. SiLU: silu(gate) = gate * sigmoid(gate)
+    # 2. Multiplication with up-projection
     return torch.nn.functional.silu(gate) * up
 `
   },
@@ -52,8 +52,8 @@ const PRESETS = {
     dtype: "float16",
     code: `def softmax_eager(scores: torch.Tensor) -> torch.Tensor:
     # Eager Softmax triggers 3 roundtrips to HBM memory:
-    # 1. Max tracking along row for numerical stability
-    # 2. Exponentiation and sum-reduction for denominator
+    # 1. Row max tracking for numerical stability
+    # 2. Exponentiation & sum-reduction for denominator
     # 3. Elementwise scaling by inverse normalizer
     return torch.softmax(scores, dim=-1)
 `
@@ -265,14 +265,18 @@ export default function KernelForgeWorkbench() {
             <button
               key={key}
               onClick={() => handlePresetSelect(key as keyof typeof PRESETS)}
-              className={`px-2.5 py-1 rounded-md transition-all text-xs font-medium flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-md transition-all text-xs font-medium flex items-center ${
                 selectedPreset === key
                   ? "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-medium"
                   : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
               }`}
             >
               <span>{val.title}</span>
-              <span className={`text-[10px] font-mono ${selectedPreset === key ? "text-cyan-400" : "text-slate-500"}`}>
+              <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                selectedPreset === key
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                  : "bg-white/[0.06] text-slate-400 border border-white/[0.04]"
+              }`}>
                 {val.dimTag}
               </span>
             </button>
@@ -319,7 +323,10 @@ export default function KernelForgeWorkbench() {
                 fontFamily: "JetBrains Mono, monospace",
                 lineNumbers: "on",
                 scrollBeyondLastLine: false,
-                automaticLayout: true
+                automaticLayout: true,
+                wordWrap: "on",
+                wrappingIndent: "indent",
+                lineNumbersMinChars: 3
               }}
             />
           </div>
