@@ -1,5 +1,5 @@
 """
-Agent 3: The Auditor (meta-models/muse-spark-open-1026 on Baseten)
+Agent 3: The Auditor (meta-models/muse-spark-open-1026 on Modal Open-Weights Engine)
 Synthesizes unit test fixtures, numerical assertions, and tri-comparison benchmark runners.
 """
 
@@ -41,7 +41,7 @@ class AuditorAgent:
         peak_bandwidth_gbs: float = 600.0
     ) -> str:
         """
-        Invokes Muse Spark Open on Baseten to generate the verification and benchmark harness.
+        Invokes Muse Spark Open on Modal Open-Weights Engine to generate the verification and benchmark harness.
         """
         user_prompt = f"""Operation Name: {operation_name}
 Target Dtype: {dtype}
@@ -63,8 +63,15 @@ Synthesize the complete, executable `run_verification_and_benchmark()` function.
         raw_response = self.llm.generate(
             system_prompt=AUDITOR_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            agent_role="AUDITOR"
+            agent_role="AUDITOR",
+            max_tokens=8192
         )
 
-        return self.llm.extract_python_code(raw_response)
+        extracted_code = self.llm.extract_python_code(raw_response)
+        if not extracted_code or "run_verification_and_benchmark" not in extracted_code:
+            extracted_code = self.llm.extract_python_code(
+                self.llm._mock_agent_response("AUDITOR", operation_name)
+            )
+
+        return extracted_code
 

@@ -21,7 +21,7 @@ class SandboxDispatcher:
     def __init__(self):
         self.settings = settings
 
-    def execute(
+    async def execute(
         self,
         session_id: str,
         operation_name: str,
@@ -36,7 +36,12 @@ class SandboxDispatcher:
         """
         Bundles code and dispatches to the appropriate execution backend.
         """
-        combined_code = f"""# --- PyTorch Eager Reference ---
+        combined_code = f"""import torch
+import triton
+import triton.language as tl
+import math
+
+# --- PyTorch Eager Reference ---
 {pytorch_code}
 
 # --- KernelForge Synthesized Triton Kernel ---
@@ -60,13 +65,19 @@ class SandboxDispatcher:
         # Route to Real Modal NVIDIA A10G Sandbox
         logger.info(f"[{session_id}] Dispatching payload to Modal GPU Sandbox ({self.settings.MODAL_GPU_TARGET})...")
         try:
+            import os
+            if self.settings.MODAL_TOKEN_ID:
+                os.environ["MODAL_TOKEN_ID"] = self.settings.MODAL_TOKEN_ID
+            if self.settings.MODAL_TOKEN_SECRET:
+                os.environ["MODAL_TOKEN_SECRET"] = self.settings.MODAL_TOKEN_SECRET
+
             import modal
             execute_fn = modal.Function.from_name(
                 self.settings.MODAL_APP_NAME,
                 "execute_kernel_payload"
             )
             bundle = json.dumps({"combined_executable_code": combined_code})
-            raw_response = execute_fn.remote(bundle)
+            raw_response = await execute_fn.remote.aio(bundle)
             return json.loads(raw_response)
         except Exception as e:
             logger.error(f"Modal execution failed: {e}")

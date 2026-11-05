@@ -31,8 +31,8 @@ def test_hardware_endpoint():
     response = client.get("/api/v1/hardware")
     assert response.status_code == 200
     hardware = response.json()
-    assert "A10G" in hardware
-    assert hardware["A10G"]["peak_bandwidth_gbs"] == 600.0
+    assert "T4" in hardware
+    assert hardware["T4"]["peak_bandwidth_gbs"] == 300.0
 
 
 def test_synthesize_endpoint():
@@ -60,10 +60,10 @@ def test_health_endpoint():
     assert "gpu_pool" in data
     assert "models" in data
     assert "meta_api" in data["models"]
-    assert "baseten" in data["models"]
+    assert "modal_open_weights" in data["models"]
     # Verify honest reporting: with mock/unconfigured keys, models report not configured
     assert data["models"]["meta_api"]["configured"] is False
-    assert data["models"]["baseten"]["configured"] is False
+    assert data["models"]["modal_open_weights"]["configured"] is False
 
 
 

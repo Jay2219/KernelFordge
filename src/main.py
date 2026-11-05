@@ -82,27 +82,29 @@ async def health_check():
             meta_status = "OFFLINE"
             meta_message = f"Connection failed: {str(e)}"
 
-    # 2. Baseten Open-Weights Health Check
-    baseten_key = (settings.BASETEN_API_KEY or "").strip()
-    baseten_configured = bool(baseten_key and baseten_key not in ("mock_key", "none", ""))
-    baseten_status = "OFFLINE"
-    baseten_latency_ms = None
-    baseten_message = "BASETEN_API_KEY not configured"
+    # 2. Modal Open-Weights Health Check (Muse Spark Open hosted on Modal)
+    modal_ow_url = (settings.MODAL_OPEN_WEIGHTS_URL or "").strip()
+    modal_ow_configured = bool(
+        modal_ow_url and not modal_ow_url.startswith("https://your-workspace")
+    )
+    modal_ow_status = "OFFLINE"
+    modal_ow_latency_ms = None
+    modal_ow_message = "MODAL_OPEN_WEIGHTS_URL not configured"
 
-    if baseten_configured:
+    if modal_ow_configured:
         t0 = time.perf_counter()
         try:
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                res = await client.get(
-                    f"{settings.BASETEN_API_BASE_URL.rstrip('/')}/models",
-                    headers={"Authorization": f"Bearer {baseten_key}"}
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res = await client.post(
+                    modal_ow_url,
+                    json={"prompt": "health_check_ping"}
                 )
-                baseten_latency_ms = round((time.perf_counter() - t0) * 1000, 1)
-                baseten_status = "ONLINE" if res.status_code in (200, 401, 403) else "ERROR"
-                baseten_message = f"HTTP {res.status_code}"
+                modal_ow_latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+                modal_ow_status = "ONLINE" if res.status_code in (200, 201) else "ERROR"
+                modal_ow_message = f"HTTP {res.status_code}"
         except Exception as e:
-            baseten_status = "OFFLINE"
-            baseten_message = f"Connection failed: {str(e)}"
+            modal_ow_status = "OFFLINE"
+            modal_ow_message = f"Connection failed: {str(e)}"
 
     # 3. GPU Sandbox Health Check
     if settings.MOCK_SANDBOX:
@@ -115,9 +117,10 @@ async def health_check():
         t0 = time.perf_counter()
         try:
             import modal
+            modal.Function.from_name(settings.MODAL_APP_NAME, "execute_kernel_payload")
+            gpu_latency_ms = round((time.perf_counter() - t0) * 1000, 1)
             gpu_status = "ONLINE"
             gpu_target = f"Modal {settings.MODAL_GPU_TARGET}"
-            gpu_latency_ms = round((time.perf_counter() - t0) * 1000, 1)
             gpu_message = f"Connected to Modal app: {settings.MODAL_APP_NAME}"
         except Exception as e:
             gpu_status = "OFFLINE"
@@ -125,7 +128,7 @@ async def health_check():
             gpu_latency_ms = None
             gpu_message = f"Modal unavailable: {str(e)}"
 
-    if meta_status == "ONLINE" and baseten_status == "ONLINE" and gpu_status == "ONLINE":
+    if meta_status == "ONLINE" and modal_ow_status == "ONLINE" and gpu_status == "ONLINE":
         system_status = "HEALTHY"
     elif gpu_status == "LOCAL_MOCK":
         system_status = "LOCAL_MOCK_ACTIVE"
@@ -149,12 +152,13 @@ async def health_check():
                 "latency_ms": meta_latency_ms,
                 "message": meta_message
             },
-            "baseten": {
-                "status": baseten_status,
-                "configured": baseten_configured,
+            "modal_open_weights": {
+                "status": modal_ow_status,
+                "configured": modal_ow_configured,
                 "model": settings.MODEL_AUDITOR,
-                "latency_ms": baseten_latency_ms,
-                "message": baseten_message
+                "provider": "Modal Open-Weights Engine",
+                "latency_ms": modal_ow_latency_ms,
+                "message": modal_ow_message
             }
         }
     }

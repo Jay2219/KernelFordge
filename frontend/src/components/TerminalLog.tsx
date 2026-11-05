@@ -40,10 +40,10 @@ export const TerminalLog: React.FC<TerminalLogProps> = ({ steps }) => {
         </span>
       );
     }
-    if (lower.includes("auditor") || lower.includes("baseten") || lower.includes("spark open")) {
+    if (lower.includes("auditor") || lower.includes("open-weights") || lower.includes("spark open")) {
       return (
         <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-semibold">
-          AUDITOR: Muse Spark Open @ Baseten
+          AUDITOR: Muse Spark Open @ Modal
         </span>
       );
     }

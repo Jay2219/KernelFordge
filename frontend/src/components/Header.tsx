@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({ status }) => {
           <span className="text-cyan-300 font-bold">NVIDIA A10G (600 GB/s)</span>
         </div>
 
-        {/* Multi-Agent Orchestration & Baseten Open-Weights Claim */}
+        {/* Multi-Agent Orchestration & Modal Open-Weights Claim */}
         <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#131926] border border-[#222d42] text-slate-300">
           <Database className="w-3.5 h-3.5 text-emerald-400" />
           <span>MODELS: </span>
@@ -84,7 +84,7 @@ export const Header: React.FC<HeaderProps> = ({ status }) => {
           <span className="text-slate-400">AUDITOR: </span>
           <span className="text-amber-300 font-semibold">Muse Spark Open</span>
           <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 font-bold uppercase tracking-wider">
-            Baseten Open-Weights
+            Modal Open-Weights
           </span>
         </div>
 

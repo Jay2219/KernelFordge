@@ -31,7 +31,7 @@ interface HealthState {
       latency_ms: number | null;
       message: string;
     };
-    baseten: {
+    modal_open_weights: {
       status: string;
       configured: boolean;
       model: string;
@@ -48,7 +48,9 @@ const PRESETS = {
     dimTag: "[32, 4096]",
     shapes: [[32, 4096]],
     dtype: "float16",
-    code: `def rms_norm_eager(x: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    code: `import torch
+
+def rms_norm_eager(x: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     # PyTorch Eager allocates 3 intermediate HBM buffers:
     # 1. Elementwise square: x.pow(2)
     # 2. Reduction across dim: variance = mean(-1)
@@ -63,7 +65,9 @@ const PRESETS = {
     dimTag: "[32, 11008]",
     shapes: [[32, 11008]],
     dtype: "float16",
-    code: `def swiglu_eager(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
+    code: `import torch
+
+def swiglu_eager(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
     # Eager SwiGLU requires 2 separate kernel launches:
     # 1. SiLU: silu(gate) = gate * sigmoid(gate)
     # 2. Multiplication with up-projection
@@ -76,12 +80,35 @@ const PRESETS = {
     dimTag: "[32, 4096]",
     shapes: [[32, 4096]],
     dtype: "float16",
-    code: `def softmax_eager(scores: torch.Tensor) -> torch.Tensor:
+    code: `import torch
+
+def softmax_eager(scores: torch.Tensor) -> torch.Tensor:
     # Eager Softmax triggers 3 roundtrips to HBM memory:
     # 1. Row max tracking for numerical stability
     # 2. Exponentiation & sum-reduction for denominator
     # 3. Elementwise scaling by inverse normalizer
     return torch.softmax(scores, dim=-1)
+`
+  },
+  fused_resadd_rmsnorm: {
+    title: "LLaMA-3 ResAdd + RMSNorm",
+    name: "fused_resadd_rmsnorm",
+    dimTag: "Level-2",
+    shapes: [[32, 4096]],
+    dtype: "float16",
+    code: `import torch
+
+def fused_residual_rmsnorm_eager(x: torch.Tensor, residual: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6):
+    # Stanford KernelBench Level-2 Composite Subgraph
+    # PyTorch Eager Bottleneck: 4 roundtrips to HBM memory
+    # 1. Residual accumulation
+    x_res = x + residual
+    # 2. Mean square variance reduction across hidden dimension
+    variance = x_res.pow(2).mean(-1, keepdim=True)
+    # 3. Normalization and scale
+    normed = x_res * torch.rsqrt(variance + eps) * weight
+    # Returns both new residual state AND normalized output
+    return normed, x_res
 `
   }
 };
@@ -102,7 +129,7 @@ export default function KernelForgeWorkbench() {
 
   const socketRef = useRef<WebSocket | null>(null);
 
-  // Poll pre-flight infrastructure diagnostic health endpoint every 30s
+  // Fetch pre-flight infrastructure diagnostic health on page load (on-demand)
   useEffect(() => {
     const fetchHealth = async () => {
       try {
@@ -116,8 +143,6 @@ export default function KernelForgeWorkbench() {
       }
     };
     fetchHealth();
-    const interval = setInterval(fetchHealth, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   const handlePresetSelect = (key: keyof typeof PRESETS) => {
@@ -279,19 +304,19 @@ export default function KernelForgeWorkbench() {
               </div>
             )}
 
-            {/* Baseten Open-Weights Status */}
-            {health?.models?.baseten?.status === "ONLINE" ? (
+            {/* Modal Open-Weights Status */}
+            {health?.models?.modal_open_weights?.status === "ONLINE" ? (
               <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-300 font-medium text-[11px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                <span>Baseten Open-Weights</span>
-                {health.models.baseten.latency_ms !== null && (
-                  <span className="text-[10px] font-mono text-amber-400/80 font-medium">({health.models.baseten.latency_ms}ms)</span>
+                <span>Modal Open-Weights: Muse Spark Open</span>
+                {health.models.modal_open_weights.latency_ms !== null && (
+                  <span className="text-[10px] font-mono text-amber-400/80 font-medium">({health.models.modal_open_weights.latency_ms}ms)</span>
                 )}
               </div>
             ) : (
               <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/[0.06] text-slate-400 text-[11px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
-                <span className="text-slate-400">Baseten:</span>
+                <span className="text-slate-400">Modal Open-Weights:</span>
                 <span className="text-slate-500 font-mono">Unconfigured</span>
               </div>
             )}

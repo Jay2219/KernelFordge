@@ -11,7 +11,7 @@ from ..schemas.compiler import (
     BenchmarkResult,
     TilingSpecification
 )
-from .llm_client import LLMClient
+from .llm_client import LLMClient, settings
 from ..agents.architect import ArchitectAgent
 from ..agents.synthesizer import SynthesizerAgent
 from ..agents.auditor import AuditorAgent
@@ -28,6 +28,7 @@ class KernelOrchestrator:
     """
 
     def __init__(self, llm_client: Optional[LLMClient] = None):
+        self.settings = settings
         self.llm = llm_client or LLMClient()
         self.architect = ArchitectAgent(self.llm)
         self.synthesizer = SynthesizerAgent(self.llm)
@@ -149,12 +150,12 @@ class KernelOrchestrator:
             )
 
         # -------------------------------------------------------------
-        # Step 3: Test Harness Synthesis (Muse Spark Open on Baseten)
+        # Step 3: Test Harness Synthesis (Muse Spark Open on Modal Open-Weights)
         # -------------------------------------------------------------
         await emit_step(
             step_name="TEST_SYNTHESIS",
             status="IN_PROGRESS",
-            agent_name="Muse Spark Open (Baseten Auditor)",
+            agent_name="Muse Spark Open (Modal Open-Weights Auditor)",
             message="Generating deterministic assert_close test fixtures and microsecond benchmark harness..."
         )
 
@@ -170,7 +171,7 @@ class KernelOrchestrator:
             await emit_step(
                 step_name="TEST_SYNTHESIS",
                 status="SUCCESS",
-                agent_name="Muse Spark Open (Baseten Auditor)",
+                agent_name="Muse Spark Open (Modal Open-Weights Auditor)",
                 message="Verification harness and do_bench runner generated.",
                 code_snippet=test_harness_code
             )
@@ -178,7 +179,7 @@ class KernelOrchestrator:
             await emit_step(
                 step_name="TEST_SYNTHESIS",
                 status="FAILED",
-                agent_name="Muse Spark Open (Baseten Auditor)",
+                agent_name="Muse Spark Open (Modal Open-Weights Auditor)",
                 message=f"Auditor test generation failed: {str(e)}"
             )
             return SynthesisResponse(
@@ -204,10 +205,10 @@ class KernelOrchestrator:
                 step_name="SANDBOX_DISPATCH",
                 status="IN_PROGRESS",
                 agent_name="Modal Subprocess Sandbox",
-                message=f"[Iteration {iteration}/{max_iterations}] Executing in isolated A10G container..."
+                message=f"[Iteration {iteration}/{max_iterations}] Executing in isolated {self.settings.MODAL_GPU_TARGET} container..."
             )
 
-            execution_output = sandbox_dispatcher.execute(
+            execution_output = await sandbox_dispatcher.execute(
                 session_id=session_id,
                 operation_name=request.operation_name,
                 pytorch_code=request.pytorch_source,
@@ -246,6 +247,7 @@ class KernelOrchestrator:
 
             # Failure occurred: Self-Healing Reflection Engine triggered
             error_log = execution_output.get("traceback", "Unknown error")
+            logger.error(f"[SANDBOX ERROR TRACE]\n{error_log}")
             await emit_step(
                 step_name="SANDBOX_DISPATCH",
                 status="FAILED",

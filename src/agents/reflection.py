@@ -62,8 +62,13 @@ SUBPROCESS STDERR TRACEBACK:
         raw_response = self.llm.generate(
             system_prompt=REFLECTION_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            agent_role="REFLECTION"
+            agent_role="REFLECTION",
+            max_tokens=8192
         )
 
-        return self.llm.extract_python_code(raw_response)
+        extracted_code = self.llm.extract_python_code(raw_response)
+        if not extracted_code or ("def " not in extracted_code and "@triton.jit" not in extracted_code):
+            extracted_code = failed_triton_code
+
+        return extracted_code
 

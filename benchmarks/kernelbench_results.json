@@ -1,0 +1,42 @@
+{
+  "metadata": {
+    "suite": "Stanford KernelBench Evaluation",
+    "version": "1.0.0",
+    "timestamp_utc": "2026-11-05T01:05:02.322098+00:00",
+    "hardware": {
+      "device": "NVIDIA A10G",
+      "compute_capability": 8.6,
+      "peak_bandwidth_gbs": 600.0,
+      "runner": "Modal Linux Subprocess Worker (CUDA_LAUNCH_BLOCKING=1)"
+    },
+    "compiler": "KernelForge Autonomous Multi-Agent Synthesizer",
+    "evaluation_contract": {
+      "parity_assertion": "torch.testing.assert_close(rtol=1e-3, atol=1e-3)",
+      "timing_harness": "triton.testing.do_bench(warmup=10, rep=50)"
+    }
+  },
+  "summary": {
+    "total_tasks_evaluated": 1,
+    "pass_at_1_count": 0,
+    "pass_at_3_count": 0,
+    "pass_rate_pct": 0.0,
+    "mean_speedup_vs_eager": 0.0,
+    "mean_speedup_vs_compile": 0.0,
+    "mean_bandwidth_saturation_pct": 0.0
+  },
+  "tasks": [
+    {
+      "task_id": "kernelbench_lvl1_rmsnorm",
+      "task_name": "Level1_RMSNorm_Primitive",
+      "level": "level_1",
+      "status": "FAILED",
+      "iterations_required": 3,
+      "input_shape": [
+        32,
+        4096
+      ],
+      "dtype": "float16",
+      "error_log": "Traceback (most recent call last):\n  File \"/root/sandbox_exec.py\", line 79, in main\n    benchmark_results = verify_fn()\n                        ^^^^^^^^^^^\n  File \"/tmp/kernel_runner.py\", line 24, in run_verification_and_benchmark\n    triton_out = triton_rms_norm(x, w)\n                 ^^^^^^^^^^^^^^^\nNameError: name 'triton_rms_norm' is not defined\n"
+    }
+  ]
+}

@@ -67,24 +67,32 @@ class MockExecutionEngine:
         bytes_per_elem = 2 if dtype in ("float16", "bfloat16") else 4
         total_bytes = 2 * total_elements * bytes_per_elem  # Read X + Write Y
 
-        if "rms" in op_lower or "norm" in op_lower:
-            eager_us = 342.1
-            compile_us = 134.8
-            triton_us = 112.3
-            achieved_gbs = 528.4
-            saturation_pct = 88.1
+        peak_bw = hardware.peak_bandwidth_gbs if hardware and hardware.peak_bandwidth_gbs else 300.0
+
+        if "resadd" in op_lower or "residual" in op_lower:
+            saturation_pct = 91.4
+            achieved_gbs = round(peak_bw * (saturation_pct / 100.0), 1)
+            triton_us = round((total_bytes / (achieved_gbs * 1e9)) * 1e6 * 2.0, 1)
+            compile_us = round(triton_us * 1.42, 1)
+            eager_us = round(triton_us * 3.78, 1)
+        elif "rms" in op_lower or "norm" in op_lower:
+            saturation_pct = 86.8
+            achieved_gbs = round(peak_bw * (saturation_pct / 100.0), 1)
+            triton_us = round((total_bytes / (achieved_gbs * 1e9)) * 1e6 * 2.1, 1)
+            compile_us = round(triton_us * 1.25, 1)
+            eager_us = round(triton_us * 2.85, 1)
         elif "swiglu" in op_lower or "silu" in op_lower:
-            eager_us = 285.4
-            compile_us = 142.0
-            triton_us = 118.6
-            achieved_gbs = 510.2
-            saturation_pct = 85.0
+            saturation_pct = 84.5
+            achieved_gbs = round(peak_bw * (saturation_pct / 100.0), 1)
+            triton_us = round((total_bytes / (achieved_gbs * 1e9)) * 1e6 * 2.3, 1)
+            compile_us = round(triton_us * 1.20, 1)
+            eager_us = round(triton_us * 2.45, 1)
         else:
-            eager_us = 310.0
-            compile_us = 155.0
-            triton_us = 125.0
-            achieved_gbs = 492.0
             saturation_pct = 82.0
+            achieved_gbs = round(peak_bw * (saturation_pct / 100.0), 1)
+            triton_us = round((total_bytes / (achieved_gbs * 1e9)) * 1e6 * 2.5, 1)
+            compile_us = round(triton_us * 1.22, 1)
+            eager_us = round(triton_us * 2.40, 1)
 
         speedup_eager = round(eager_us / triton_us, 2)
         speedup_compile = round(compile_us / triton_us, 2)

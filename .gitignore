@@ -30,6 +30,14 @@ node_modules/
 .triton/
 /tmp/
 
+# Scratch & Manual Verification Scripts (Never commit)
+test_meta_api.py
+test_modal_gpu.py
+scripts/test_*.py
+scratch_*.py
+Plan/
+*.tsbuildinfo
+
 # OS files
 .DS_Store
 Thumbs.db

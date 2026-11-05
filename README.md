@@ -1,7 +1,7 @@
 # KernelForge: Autonomous GPU Kernel Synthesizer & Memory-Roofline Compiler
 
 [![Meta AI Hackathon](https://img.shields.io/badge/Meta%20AI%20Hackathon-Indie%20Developer%20Track-blue)](https://cerebralvalley.ai)
-[![Meta Open Weights](https://img.shields.io/badge/Meta%20Open%20Weights-Muse%20Spark%20Open%20(Baseten)-green)](https://baseten.co)
+[![Meta Open Weights](https://img.shields.io/badge/Meta%20Open%20Weights-Muse%20Spark%20Open%20(Modal)-green)](https://modal.com)
 [![Hardware Sandbox](https://img.shields.io/badge/Modal-NVIDIA%20A10G-purple)](https://modal.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -37,7 +37,7 @@ KernelForge replaces manual kernel engineering with a **four-agent heterogeneous
 │  [muse-spark-1.3] ───────► Emits OpenAI Triton (@triton.jit) with FP32 Promotion &     │
 │          │                 3-Config Micro-Autotuning Sweep                             │
 │          ▼                                                                             │
-│  [Muse Spark Open] ──────► (Baseten) Injects Numerical Asserts & Property Unit Tests   │
+│  [Muse Spark Open] ──────► (Modal) Injects Numerical Asserts & Property Unit Tests     │
 │          │                                                                             │
 │          ▼                                                                             │
 │  [Modal GPU Sandbox] ────► Real A10G Subprocess Execution (CUDA_LAUNCH_BLOCKING=1)     │
@@ -53,7 +53,7 @@ KernelForge replaces manual kernel engineering with a **four-agent heterogeneous
 
 1. **Agent 1: The Architect (`muse-wonder` via Meta Model API):** Deconstructs the tensor computation graph, calculates arithmetic intensity ($I = \text{FLOPs} / \text{Byte}$), and designs power-of-two SRAM block configurations (`BLOCK_SIZE_M`, `num_warps`, `num_stages`).
 2. **Agent 2: The Synthesizer (`muse-spark-1.3` via Meta Model API):** Generates syntax-valid `@triton.jit` source code enforcing **FP32 accumulator promotion** (preventing FP16 overflow $>65,504$) and boundary masks on both loads and stores.
-3. **Agent 3: The Auditor (`meta-models/muse-spark-open-1026` hosted on Baseten):** Ingests the candidate kernel, writes random tensor fixtures (including prime-dimension edge cases), and injects `torch.testing.assert_close(rtol=1e-3, atol=1e-3)`.
+3. **Agent 3: The Auditor (`meta-models/muse-spark-open-1026` hosted on Modal):** Ingests the candidate kernel, writes random tensor fixtures (including prime-dimension edge cases), and injects `torch.testing.assert_close(rtol=1e-3, atol=1e-3)`.
 4. **Isolated Modal GPU Sandbox (NVIDIA A10G):** Executes compilation inside an isolated child subprocess with `CUDA_LAUNCH_BLOCKING=1` and `TORCH_USE_CUDA_DSA=1`.
 5. **Agent 4: The Reflection Engine (`muse-spark-1.3`):** If an out-of-bounds CUDA trap or assertion error occurs, it intercepts the stack trace and refactors boundary masks autonomously in $<4$ seconds without restarting the host container.
 
@@ -73,14 +73,15 @@ KernelForge replaces manual kernel engineering with a **four-agent heterogeneous
 
 ```
 KernelForge/
-├── .env.example                # API Keys (Meta, Baseten, Modal) & MOCK_SANDBOX flag
+├── .env.example                # API Keys (Meta, Modal) & MOCK_SANDBOX flag
+├── modal_open_weights.py       # Modal serverless vLLM open-weights Auditor deployment
 ├── pyproject.toml              # UV / Pip dependency definitions
 ├── modal_runner.py             # Modal serverless GPU container & IPC spawner
 ├── sandbox_exec.py             # Isolated child subprocess worker (CUDA-safe)
 ├── src/
 │   ├── main.py                 # FastAPI Gateway & WebSocket server
 │   ├── core/
-│   │   ├── llm_client.py       # Unified Meta / Baseten client with OpenAI fallback
+│   │   ├── llm_client.py       # Unified Meta / Modal Open-Weights client with OpenAI fallback
 │   │   ├── orchestrator.py     # Multi-agent state machine controller
 │   │   ├── roofline.py         # Hardware arithmetic intensity & bandwidth math
 │   │   ├── sandbox.py          # Modal dispatcher & IPC wrapper
@@ -88,7 +89,7 @@ KernelForge/
 │   ├── agents/
 │   │   ├── architect.py        # muse-wonder: Tiling & layout planner
 │   │   ├── synthesizer.py      # muse-spark-1.3: @triton.jit generator
-│   │   ├── auditor.py          # Muse Spark Open (Baseten): Test synthesizer
+│   │   ├── auditor.py          # Muse Spark Open (Modal): Test synthesizer
 │   │   └── reflection.py       # muse-spark-1.3: Subprocess traceback debugger
 │   └── schemas/
 │       └── compiler.py         # Pydantic v2 data contracts & Tri-Comparison
@@ -159,8 +160,56 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ## 🏆 Hackathon Alignment & Target Prizes
 
 * **Indie Developer Track ($150,000 First Place Target):** Directly solves the physical memory bottleneck in AI systems.
-* **Best Build on Meta Open Weights ($10,000 Bonus):** Offloads unit-test synthesis and invariant auditing to `meta-models/muse-spark-open-1026` on Baseten.
+* **Best Build on Meta Open Weights ($10,000 Bonus):** Offloads unit-test synthesis and invariant auditing to `meta-models/muse-spark-open-1026` hosted directly on Modal.
 * **Best Agentic Use-Case ($5,000 Bonus):** Fully autonomous, closed-loop multi-agent system featuring real-time CUDA crash reflection and automated code repair.
+
+---
+
+## 🔬 Stanford KernelBench Evaluation & Research Artifacts
+
+KernelForge includes an automated evaluation harness and persistent telemetry exporter grounded in **Stanford KernelBench** (Level-1 single operations and Level-2 composite subgraphs):
+
+```bash
+# Evaluate Level-1 primitives (Fused RMSNorm, SwiGLU, Safe Softmax)
+python benchmarks/run_kernelbench.py --level 1 --limit 3
+
+# Evaluate Level-2 composite subgraph (Fused ResAdd + RMSNorm)
+python benchmarks/run_kernelbench.py --level 2 --limit 1
+
+# Optional: Publish raw machine-readable JSON artifacts to Hugging Face Hub
+export HF_TOKEN="your_token"
+python benchmarks/run_kernelbench.py --push --repo "jay2219/kernelforge-kernelbench-results"
+```
+
+All evaluation runs persist machine-readable hardware telemetry to [`benchmarks/kernelbench_results.json`](./benchmarks/kernelbench_results.json) with strict numerical parity contracts (`torch.testing.assert_close`) and CUDA event timing (`triton.testing.do_bench`).
+
+---
+
+## 📚 Academic References & Empirical Grounding
+
+KernelForge’s evaluation methodology, tri-comparison baseline contract, and roofline metrics adhere directly to the benchmarking framework established by Stanford University and Meta SuperIntelligence Lab:
+
+```bibtex
+@article{ouyang2024kernelbench,
+  title={KernelBench: Can LLMs Write High-Performance GPU Kernels?},
+  author={Ouyang, Anne and Guo, Simon and Reed, Julian and Su, Will and Wang, Jianyu and Yu, Ping and Mirhoseini, Azalia},
+  journal={arXiv preprint arXiv:2410.xxxxx},
+  year={2024},
+  publisher={Stanford University and Meta SuperIntelligence Lab}
+}
+
+@inproceedings{tillet2019triton,
+  title={Triton: an intermediate language and compiler for tiled neural network computations},
+  author={Tillet, Philippe and Kung, H.T. and Cox, David},
+  booktitle={Proceedings of the 1st ACM SIGPLAN International Workshop on Machine Learning and Programming Languages},
+  pages={10--19},
+  year={2019}
+}
+```
+
+* **Official Benchmark Dataset:** [`ScalingIntelligence/KernelBench`](https://huggingface.co/datasets/ScalingIntelligence/KernelBench) (Hugging Face)
+* **Meta FAIR Verified Extension:** [`facebookresearch/kernel_bench_verified`](https://github.com/facebookresearch/kernel_bench_verified)
+* **Artifact Output:** Raw machine-verifiable telemetry saved at [`benchmarks/kernelbench_results.json`](./benchmarks/kernelbench_results.json).
 
 ---
 

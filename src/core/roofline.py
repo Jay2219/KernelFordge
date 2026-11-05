@@ -26,7 +26,21 @@ def calculate_op_characteristics(
 
     op_lower = operation_name.lower()
     
-    if "rms" in op_lower or "norm" in op_lower:
+    if "resadd" in op_lower or "residual" in op_lower:
+        # Fused Residual Add + Pre-RMSNorm (Stanford KernelBench Level-2 Composite Fusion)
+        # FLOPs: 1 (add) + 4 (RMSNorm) = 5 * total_elements
+        flops = 5 * total_elements
+        # In Fused Triton: Read x, Read residual, Read weight (broadcast), Write normed, Write x_res
+        fused_bytes = (4 * total_elements + primary_shape[-1]) * bytes_per_elem
+        # In Eager: 4 separate global HBM passes across 3 intermediate buffers
+        eager_bytes = fused_bytes + (6 * total_elements * bytes_per_elem)
+        op_type = "Fused"
+        fusion_rationale = (
+            "Stanford KernelBench Level-2 composite fusion: combines residual stream accumulation "
+            "and layer normalization into a single streaming register pass, eliminating 4 HBM roundtrips."
+        )
+
+    elif "rms" in op_lower or "norm" in op_lower:
         # RMSNorm: y = x * rsqrt(mean(x^2) + eps) * weight
         # FLOPs:
         # 1. x^2: total_elements

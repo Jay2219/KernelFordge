@@ -226,8 +226,22 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
               </div>
             </div>
           </div>
+        ) : isStandby ? (
+          /* TAB 2 STANDBY: NO BENCHMARK RUN YET -> NO GRAPH, NO FAKE NUMBERS */
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-500 font-mono">
+            <div className="w-12 h-12 rounded-xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-center text-cyan-400/40 mb-3">
+              <TrendingUp className="w-6 h-6 stroke-[1.5]" />
+            </div>
+            <div className="text-sm font-semibold text-slate-300 font-sans">No Roofline Profile Available</div>
+            <div className="text-xs text-slate-500 mt-1.5 max-w-[260px] leading-relaxed font-sans">
+              Synthesize &amp; compile a kernel to profile arithmetic intensity and map operational coordinates onto the A10G roofline.
+            </div>
+            <div className="mt-4 px-3 py-1 rounded-md bg-white/[0.03] border border-white/[0.06] text-[11px] text-slate-400 font-sans">
+              Standby (Ctrl + Enter to Run)
+            </div>
+          </div>
         ) : (
-          /* TAB 2: CRISP 2D ROOFLINE MODEL */
+          /* TAB 2 POPULATED: REAL EXECUTION DATA ONLY */
           <div className="flex-1 flex flex-col justify-between overflow-y-auto">
             <div>
               {/* Header with Expand Button */}
@@ -250,7 +264,7 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                 </div>
               </div>
 
-              {/* Compact Vector SVG Roofline Graph (Collision-Free) */}
+              {/* Compact Vector SVG Roofline Graph */}
               <div className="w-full bg-[#070A0F] rounded-md border border-white/[0.06] p-2">
                 <svg viewBox="0 0 320 150" className="w-full h-[150px] font-mono select-none">
                   <defs>
@@ -267,13 +281,7 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                     </filter>
                   </defs>
 
-                  {/* Shaded Area Under Roofline */}
-                  <polygon
-                    points="35,125 185,35 305,35 305,125 35,125"
-                    fill="url(#roofGrad)"
-                  />
-
-                  {/* Gridlines */}
+                  <polygon points="35,125 185,35 305,35 305,125 35,125" fill="url(#roofGrad)" />
                   <line x1="35" y1="125" x2="305" y2="125" stroke="#1e293b" strokeWidth="1" />
                   <line x1="35" y1="80" x2="305" y2="80" stroke="#161f30" strokeWidth="0.8" strokeDasharray="3 3" />
                   <line x1="35" y1="35" x2="305" y2="35" stroke="#161f30" strokeWidth="0.8" strokeDasharray="3 3" />
@@ -281,19 +289,12 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                   <line x1="110" y1="15" x2="110" y2="125" stroke="#161f30" strokeWidth="0.8" strokeDasharray="3 3" />
                   <line x1="185" y1="15" x2="185" y2="125" stroke="#161f30" strokeWidth="0.8" strokeDasharray="3 3" />
 
-                  {/* Slanted Memory Ceiling (600 GB/s) */}
                   <line x1="35" y1="125" x2="185" y2="35" stroke="#06B6D4" strokeWidth="2.5" strokeLinecap="round" />
-                  {/* Horizontal Compute Ceiling (31.2 TF) */}
                   <line x1="185" y1="35" x2="305" y2="35" stroke="#38BDF8" strokeWidth="2.5" strokeLinecap="round" />
-
-                  {/* Knee / Ridge Point Indicator */}
                   <circle cx="185" cy="35" r="3.5" fill="#38BDF8" />
-                  {/* Fixed Text Collision: Knee label anchored to the left of ridge point at Y=22 */}
                   <text x="180" y="22" fill="#7DD3FC" fontSize="7.5" fontWeight="bold" textAnchor="end">
                     Knee: 52 FL/B
                   </text>
-
-                  {/* Ceiling Labels: Comfortably spaced */}
                   <text x="65" y="70" fill="#06B6D4" fontSize="8" fontWeight="bold" transform="rotate(-31, 65, 70)">
                     Memory: 600 GB/s
                   </text>
@@ -301,7 +302,6 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                     Compute: 31.2 TF
                   </text>
 
-                  {/* Axis Ticks */}
                   <text x="32" y="128" fill="#64748B" fontSize="7.5" textAnchor="end">0.1</text>
                   <text x="32" y="83" fill="#64748B" fontSize="7.5" textAnchor="end">1.0</text>
                   <text x="32" y="38" fill="#64748B" fontSize="7.5" textAnchor="end">31</text>
@@ -313,71 +313,37 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                   <text x="305" y="137" fill="#64748B" fontSize="7.5" textAnchor="middle">10³</text>
                   <text x="245" y="145" fill="#64748B" fontSize="7.5">FLOPs/Byte →</text>
 
-                  {/* Empirical Operating Points (Only rendered when benchmark is available) */}
-                  {!isStandby ? (
-                    <>
-                      {/* Eager Point (Red) */}
-                      <circle cx="110" cy="115" r="3.5" fill="#F43F5E" />
-                      <text x="118" y="118" fill="#FDA4AF" fontSize="8">
-                        Eager (~30% HBM)
-                      </text>
-
-                      {/* Upward Vector */}
-                      <line x1="110" y1="110" x2="110" y2="85" stroke="#10B981" strokeWidth="1.5" strokeDasharray="2 2" />
-                      <polygon points="110,80 107,86 113,86" fill="#10B981" />
-
-                      {/* Triton Operating Point */}
-                      <circle
-                        cx={110}
-                        cy={80}
-                        r={4.5}
-                        fill="#10B981"
-                        filter="url(#glowGreen)"
-                      />
-                      <circle cx={110} cy={80} r={2} fill="#FFFFFF" />
-                      <text
-                        x={118}
-                        y={83}
-                        fill="#34D399"
-                        fontSize={8.5}
-                        fontWeight="bold"
-                      >
-                        Triton ({saturationPct.toFixed(1)}% HBM)
-                      </text>
-                    </>
-                  ) : (
-                    /* Clean Standby State: No fake operational points */
-                    <g opacity="0.7">
-                      <rect x="55" y="80" width="210" height="22" rx="4" fill="#0A0D14" stroke="#1E293B" strokeWidth="0.8" />
-                      <text x="160" y="94" fill="#64748B" fontSize="8" textAnchor="middle" fontFamily="sans-serif">
-                        Awaiting synthesis to plot operational points
-                      </text>
-                    </g>
-                  )}
+                  {/* Empirical Operating Points from real run */}
+                  <circle cx="110" cy="115" r="3.5" fill="#F43F5E" />
+                  <text x="118" y="118" fill="#FDA4AF" fontSize="8">
+                    Eager (Unfused)
+                  </text>
+                  <line x1="110" y1="110" x2="110" y2="85" stroke="#10B981" strokeWidth="1.5" strokeDasharray="2 2" />
+                  <polygon points="110,80 107,86 113,86" fill="#10B981" />
+                  <circle cx={110} cy={80} r={4.5} fill="#10B981" filter="url(#glowGreen)" />
+                  <circle cx={110} cy={80} r={2} fill="#FFFFFF" />
+                  <text x={118} y={83} fill="#34D399" fontSize="8.5" fontWeight="bold">
+                    Triton ({saturationPct.toFixed(1)}% HBM)
+                  </text>
                 </svg>
               </div>
             </div>
 
-            {/* Mathematical Rationale Card */}
+            {/* Dynamic Mathematical Rationale Card */}
             <div className="mt-3 text-[11px] text-slate-300 bg-white/[0.02] p-2.5 rounded border border-white/[0.06] leading-relaxed">
-              <span className="text-cyan-400 font-semibold font-sans">
-                {isStandby ? "Awaiting Synthesis: " : "Memory-Bound Operator: "}
+              <span className="text-cyan-400 font-semibold font-sans">Empirical Analysis: </span>
+              <span>
+                Synthesized kernel achieved{" "}
+                <strong className="text-emerald-400 font-mono">{bandwidthGbs.toFixed(1)} GB/s</strong> (
+                <strong className="text-emerald-400 font-mono">{saturationPct.toFixed(1)}%</strong> saturation of theoretical 600 GB/s wire speed) on target accelerator.
               </span>
-              {isStandby ? (
-                <span>Click &quot;Synthesize &amp; Compile&quot; to profile arithmetic intensity and map operational coordinates onto the A10G roofline.</span>
-              ) : (
-                <span>
-                  Ingested PyTorch operation has an arithmetic intensity of{" "}
-                  <span className="font-mono text-slate-100 font-bold">~1.25 FLOPs/byte</span>. KernelForge SRAM tile fusion eliminates global memory roundtrips, accelerating throughput right to the A10G hardware ceiling.
-                </span>
-              )}
             </div>
           </div>
         )}
       </div>
 
-      {/* High-Resolution Roofline Modal Overlay (Click-to-Expand) */}
-      {isRooflineModalOpen && (
+      {/* High-Resolution Roofline Modal Overlay (Only available when real benchmark run is present) */}
+      {!isStandby && isRooflineModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150 select-none"
           onClick={() => setIsRooflineModalOpen(false)}
@@ -453,41 +419,28 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
                   Knee: 52 FLOPs/Byte
                 </text>
 
-                {/* Empirical Data Points (Only rendered when real benchmark is available) */}
-                {!isStandby ? (
-                  <>
-                    {/* PyTorch Eager Baseline Point */}
-                    <circle cx="160" cy="210" r="6" fill="#F43F5E" />
-                    <text x="175" y="214" fill="#FDA4AF" fontSize="12" fontWeight="medium">
-                      PyTorch Eager (Unfused HBM Traffic: 3 Roundtrips)
-                    </text>
+                {/* Empirical Data Points from real benchmark run */}
+                <circle cx="160" cy="210" r="6" fill="#F43F5E" />
+                <text x="175" y="214" fill="#FDA4AF" fontSize="12" fontWeight="medium">
+                  PyTorch Eager (Unfused HBM Traffic)
+                </text>
 
-                    {/* Upward Acceleration Vector */}
-                    <line x1="160" y1="202" x2="160" y2="162" stroke="#10B981" strokeWidth="2.5" strokeDasharray="3 3" />
-                    <polygon points="160,154 155,164 165,164" fill="#10B981" />
+                {/* Upward Acceleration Vector */}
+                <line x1="160" y1="202" x2="160" y2="162" stroke="#10B981" strokeWidth="2.5" strokeDasharray="3 3" />
+                <polygon points="160,154 155,164 165,164" fill="#10B981" />
 
-                    {/* Synthesized Triton Kernel Operating Point */}
-                    <circle 
-                      cx="160" 
-                      cy="155" 
-                      r={7} 
-                      fill="#10B981" 
-                      filter="url(#modalGlowGreen)" 
-                    />
-                    <circle cx="160" cy="155" r="3" fill="#FFFFFF" />
-                    <text x="175" y="152" fill="#34D399" fontSize="13" fontWeight="bold">
-                      KernelForge Triton ({bandwidthGbs.toFixed(1)} GB/s • ${saturationPct.toFixed(1)}% Saturation)
-                    </text>
-                  </>
-                ) : (
-                  /* Clean Standby State: No fake operational points */
-                  <g opacity="0.8">
-                    <rect x="130" y="125" width="300" height="34" rx="6" fill="#0A0D14" stroke="#334155" strokeWidth="1" />
-                    <text x="280" y="146" fill="#94A3B8" fontSize="12" textAnchor="middle" fontFamily="sans-serif">
-                      Standby: Operational points mapped after run
-                    </text>
-                  </g>
-                )}
+                {/* Synthesized Triton Kernel Operating Point */}
+                <circle 
+                  cx="160" 
+                  cy="155" 
+                  r={7} 
+                  fill="#10B981" 
+                  filter="url(#modalGlowGreen)" 
+                />
+                <circle cx="160" cy="155" r="3" fill="#FFFFFF" />
+                <text x="175" y="152" fill="#34D399" fontSize="13" fontWeight="bold">
+                  KernelForge Triton ({bandwidthGbs.toFixed(1)} GB/s • {saturationPct.toFixed(1)}% Saturation)
+                </text>
 
                 {/* X & Y Axis Labels */}
                 <text x="400" y="265" fill="#94A3B8" fontSize="11">
@@ -509,10 +462,13 @@ export const TriComparisonChart: React.FC<TriComparisonChartProps> = ({
               </svg>
             </div>
 
-            {/* Analytical Callout Footer */}
+            {/* Dynamic Analytical Callout Footer */}
             <div className="mt-3.5 flex items-center justify-between text-xs text-slate-400">
               <div>
-                <span className="text-emerald-400 font-semibold">Compiler Diagnostic:</span> Kernel is strictly memory-bound (<span className="font-mono text-slate-200 font-bold">I ≈ 1.25 FLOPs/byte</span>). Fusing reductions inside SRAM registers recovers <span className="font-mono text-emerald-400 font-bold">88.1%</span> of theoretical wire speed.
+                <span className="text-emerald-400 font-semibold">Compiler Diagnostic:</span>{" "}
+                <span>
+                  Kernel achieved <span className="font-mono text-emerald-400 font-bold">{saturationPct.toFixed(1)}%</span> saturation of theoretical memory bandwidth ({bandwidthGbs.toFixed(1)} GB/s) on target accelerator.
+                </span>
               </div>
               <span className="font-mono text-[10px] text-slate-500">Press ESC or click outside to dismiss</span>
             </div>

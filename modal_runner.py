@@ -21,7 +21,7 @@ kernel_image = (
         "numpy>=1.26.0",
         "pydantic>=2.9.0"
     )
-    .copy_local_file("sandbox_exec.py", "/root/sandbox_exec.py")
+    .add_local_file("sandbox_exec.py", "/root/sandbox_exec.py")
 )
 
 
@@ -29,8 +29,8 @@ kernel_image = (
     image=kernel_image,
     gpu="A10G",
     timeout=45,
-    min_containers=1,       # Eliminates 20s cold start for live video demo
-    scaledown_window=300    # Keeps container warm for 5 minutes between queries
+    min_containers=0,       # Scales to ZERO when idle = $0.00 cost
+    scaledown_window=60     # Keeps container warm for 1 minute between queries
 )
 def execute_kernel_payload(bundle_json: str) -> str:
     """

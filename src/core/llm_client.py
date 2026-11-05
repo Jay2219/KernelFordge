@@ -1,5 +1,5 @@
 """
-Unified LLM Provider Client with Resilient Fallback for Meta Model API and Baseten.
+Unified LLM Provider Client with Resilient Fallback for Meta Model API and Modal Open-Weights.
 """
 
 import os
@@ -7,6 +7,7 @@ import json
 import re
 import logging
 from typing import Dict, Any, Optional, List
+import httpx
 from openai import OpenAI
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,12 +19,12 @@ class Settings(BaseSettings):
 
     META_MODEL_API_KEY: str = "mock_key"
     META_API_BASE_URL: str = "https://api.meta.ai/v1"
-    MODEL_ARCHITECT: str = "muse-wonder"
+    MODEL_ARCHITECT: str = "muse-wonder-1.0"
     MODEL_SYNTHESIZER: str = "muse-spark-1.3"
     MODEL_REFLECTION: str = "muse-spark-1.3"
 
-    BASETEN_API_KEY: str = "mock_key"
-    BASETEN_API_BASE_URL: str = "https://inference.baseten.co/v1"
+    # Modal Open-Weights Serverless Endpoint (qualifies for $10K prize)
+    MODAL_OPEN_WEIGHTS_URL: Optional[str] = None
     MODEL_AUDITOR: str = "meta-models/muse-spark-open-1026"
 
     FALLBACK_MODE: bool = False
@@ -31,9 +32,11 @@ class Settings(BaseSettings):
     FALLBACK_BASE_URL: str = "https://api.openai.com/v1"
     FALLBACK_MODEL: str = "gpt-4o"
 
-    MOCK_SANDBOX: bool = True
+    MOCK_SANDBOX: bool = False
     MODAL_GPU_TARGET: str = "A10G"
     MODAL_APP_NAME: str = "kernelforge-sandbox"
+    MODAL_TOKEN_ID: Optional[str] = None
+    MODAL_TOKEN_SECRET: Optional[str] = None
 
 
 
@@ -42,7 +45,7 @@ settings = Settings()
 
 class LLMClient:
     """
-    Unified client coordinating Meta Model API and Baseten open-weights endpoints
+    Unified client coordinating Meta Model API and Modal Open-Weights endpoints
     with automatic failover handling.
     """
 
@@ -53,12 +56,6 @@ class LLMClient:
         self.meta_client = OpenAI(
             base_url=self.settings.META_API_BASE_URL,
             api_key=self.settings.META_MODEL_API_KEY or "none"
-        )
-        
-        # Baseten Open-Weights Client
-        self.baseten_client = OpenAI(
-            base_url=self.settings.BASETEN_API_BASE_URL,
-            api_key=self.settings.BASETEN_API_KEY or "none"
         )
 
         # Optional Fallback Proxy Client
@@ -75,19 +72,41 @@ class LLMClient:
         user_prompt: str,
         agent_role: str = "SYNTHESIZER",
         temperature: float = 0.2,
-        max_tokens: int = 4096
+        max_tokens: int = 8192
     ) -> str:
         """
         Routes the request to the appropriate model based on agent role.
         """
-        # Determine model and target client
+        # Route AUDITOR to Modal Open-Weights Serverless Engine
+        if agent_role == "AUDITOR":
+            modal_ow_url = (self.settings.MODAL_OPEN_WEIGHTS_URL or "").strip()
+            if modal_ow_url and not modal_ow_url.startswith("https://your-workspace"):
+                try:
+                    with httpx.Client(timeout=60.0) as http_client:
+                        resp = http_client.post(
+                            modal_ow_url,
+                            json={
+                                "prompt": user_prompt,
+                                "system_prompt": system_prompt,
+                                "operation_name": "kernel_audit"
+                            }
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            return data.get("test_harness") or data.get("response") or resp.text
+                except Exception as e:
+                    logger.warning(f"Modal Open-Weights endpoint call failed: {e}. Falling back to Meta Model API...")
+                    if self.settings.MOCK_SANDBOX and self.settings.META_MODEL_API_KEY in ("mock_key", "", "none"):
+                        return self._mock_agent_response("AUDITOR", user_prompt)
+                    # Gracefully fall through to Meta Model API below
+            elif self.settings.MOCK_SANDBOX:
+                return self._mock_agent_response("AUDITOR", user_prompt)
+
+        # Determine model for Meta Model API
         if agent_role == "ARCHITECT":
             client = self.meta_client
             model = self.settings.MODEL_ARCHITECT
-        elif agent_role == "AUDITOR":
-            client = self.baseten_client
-            model = self.settings.MODEL_AUDITOR
-        elif agent_role in ("SYNTHESIZER", "REFLECTION"):
+        elif agent_role in ("SYNTHESIZER", "REFLECTION", "AUDITOR"):
             client = self.meta_client
             model = self.settings.MODEL_SYNTHESIZER
         else:
@@ -101,8 +120,7 @@ class LLMClient:
 
         # In Mock Mode without valid live keys, return deterministic templates
         if self.settings.MOCK_SANDBOX and (
-            self.settings.META_MODEL_API_KEY in ("mock_key", "", "none") or
-            self.settings.BASETEN_API_KEY in ("mock_key", "", "none")
+            self.settings.META_MODEL_API_KEY in ("mock_key", "", "none")
         ):
             return self._mock_agent_response(agent_role, user_prompt)
 
@@ -148,17 +166,24 @@ class LLMClient:
             first_brace = clean_str.find("{")
             last_brace = clean_str.rfind("}")
             if first_brace != -1 and last_brace != -1:
-                return json.loads(clean_str[first_brace : last_brace + 1])
-            raise
+                try:
+                    return json.loads(clean_str[first_brace : last_brace + 1])
+                except json.JSONDecodeError:
+                    pass
+            logger.warning(f"Could not parse valid JSON from LLM response. Falling back to default spec.")
+            return {}
 
     def extract_python_code(self, text: str) -> str:
         """
-        Extracts executable Python code from markdown blocks.
+        Extracts executable Python code from markdown blocks, or raw python code if not fenced.
         """
         code_match = re.search(r"```(?:python)?\s*([\s\S]*?)\s*```", text)
         if code_match:
             return code_match.group(1).strip()
-        return text.strip()
+        cleaned = text.strip()
+        if "@triton.jit" in cleaned or "def " in cleaned or "import " in cleaned:
+            return cleaned
+        return ""
 
     def _mock_agent_response(self, role: str, prompt: str) -> str:
         """
@@ -236,7 +261,7 @@ import torch
 import triton.testing
 
 def run_verification_and_benchmark():
-    # Deterministic test harness generated by Muse Spark Open
+    # Deterministic test harness generated by Muse Spark Open on Modal Open-Weights Engine
     torch.manual_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
